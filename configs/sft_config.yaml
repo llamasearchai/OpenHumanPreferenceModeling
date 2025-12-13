@@ -1,0 +1,18 @@
+sft:
+  model_name: "meta-llama/Llama-2-7b-hf" # Or a smaller model for testing like 'gpt2'
+  lora_r: 64
+  lora_alpha: 16
+  lora_dropout: 0.1
+  epochs: 3
+  batch_size: 128
+  learning_rate: 2.0e-4
+  max_length: 2048
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  gradient_checkpointing: true
+  deepspeed: "configs/ds_config.json"
+
+data:
+  domains: ["electronics", "fashion", "food", "travel"]
+  n_synthetic: 50 # 50k in real, 50 for dev
+  val_split: 0.1

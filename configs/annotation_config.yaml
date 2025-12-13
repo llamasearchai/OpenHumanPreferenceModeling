@@ -1,0 +1,28 @@
+task_types:
+  - pairwise
+  - ranking
+  - critique
+  - likert
+
+quality_checks:
+  gold_standard_rate: 0.05
+  min_pass_rate: 0.80
+  agreement_threshold: 0.60
+  
+routing:
+  expert_threshold: 0.8
+  crowd_easy_tasks: true
+  
+payment:
+  base_rate: 0.50
+  expert_rate: 5.00
+  bonus_accuracy_threshold: 0.90
+  bonus_amount: 0.25
+  
+rate_limits:
+  requests_per_minute: 100
+  
+ui:
+  tasks_per_page: 20
+  autosave_interval: 30
+  keyboard_shortcuts: true

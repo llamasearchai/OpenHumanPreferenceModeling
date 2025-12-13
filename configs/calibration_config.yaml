@@ -1,0 +1,39 @@
+calibration:
+  ece_bins: 10
+  ece_threshold: 0.15
+  sample_rate: 0.01
+  check_interval_seconds: 3600
+  consecutive_checks: 3
+  min_samples: 1000
+  max_iterations: 100
+  temperature_min: 0.5
+  temperature_max: 5.0
+  validation_data_uri: null
+  reference_data_uri: null
+  poisoning_alpha: 0.05
+  kafka_topic: "calibration-events"
+  kafka_servers: null
+  slack_webhook: null
+  model_version: null
+  prediction_store_path: "calibration_predictions.sqlite"
+  configmap_name: null
+  configmap_namespace: null
+  configmap_key: null
+  restart_kind: "deployment"
+  restart_name: null
+  rollout_timeout_seconds: 300
+  temperature_scaling: true
+  subgroup_calibration: true
+  recalibration_method: "temperature" # or "platt", "isotonic"
+  
+drift_monitoring:
+  window_size: 1000
+  test_method: "ks" # kolmogorov-smirnov
+  alpha: 0.05
+  psi_threshold: 0.25 # Population Stability Index threshold
+  
+fairness:
+  parity_gap_threshold: 0.05
+  counterfactual_threshold: 0.1
+  debiasing_lambda: 0.1
+  reweight_groups: true

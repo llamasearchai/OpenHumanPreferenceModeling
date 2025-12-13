@@ -1,0 +1,33 @@
+metrics:
+  poll_interval_seconds: 60
+  retention_days: 7
+
+alerts:
+  evaluation_interval_seconds: 30
+  notification_channels:
+    critical: "pagerduty"
+    warning: "slack"
+
+slos:
+  api_availability: 0.999
+  model_accuracy: 0.75
+  latency_p95_ms: 500
+
+rules:
+  - name: HighErrorRate
+    expr: "rate(error_count) > 0.05"
+    severity: "critical"
+    period_minutes: 5
+    description: "Error rate exceeds 5%"
+
+  - name: HighLatency
+    expr: "latency_p95 > 500"
+    severity: "warning"
+    period_minutes: 5
+    description: "P95 latency exceeds 500ms"
+
+  - name: ModelAccuracyDrop
+    expr: "model_accuracy < 0.75"
+    severity: "critical"
+    period_minutes: 60
+    description: "Model accuracy below 75%"

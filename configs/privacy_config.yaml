@@ -1,0 +1,19 @@
+federated_learning:
+  rounds: 10
+  min_clients: 5
+  clients_per_round: 3
+  learning_rate: 0.01
+  differential_privacy:
+    epsilon: 1.0
+    delta: 1e-5
+    noise_multiplier: 1.1
+    clip_norm: 1.0
+
+encryption:
+  algorithm: "AES-256-GCM"
+  key_derivation: "PBKDF2-SHA256"
+  iterations: 1000
+
+compliance:
+  gdpr: true
+  retention_days: 90

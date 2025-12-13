@@ -1,0 +1,13 @@
+active_learning:
+  seed_size: 100
+  unlabeled_pool_size: 10000
+  budget: 1000
+  batch_size: 50
+  strategies: ["iid", "uncertainty", "diversity"]
+  hybrid_alpha: 0.6
+  early_stopping_patience: 3
+  diversity_epsilon: 0.01
+  stratification: true
+  exploration_rate: 0.1
+  cost_aware: true
+  expert_threshold: 0.8
