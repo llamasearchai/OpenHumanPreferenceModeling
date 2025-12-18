@@ -1,0 +1,15 @@
+hidden_dim: 768
+num_layers: 12
+num_heads: 8
+sliding_window: 256
+prompt_embedding_dim: 512
+choice_vector_dim: 64
+lora_rank: 16
+memory_top_k: 5
+gate_constraint: 0.7
+prefetch_threads: 4
+model_name: "sentence-transformers/all-mpnet-base-v2"
+pinecone_env: "us-west1-gcp"
+pinecone_index: "user-memory-index"
+redis_url: "redis://localhost:6379"
+lora_ttl: 86400 # 24 hours
