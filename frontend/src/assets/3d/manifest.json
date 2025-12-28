@@ -1,0 +1,101 @@
+{
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "environment-night",
+      "name": "Night Environment HDR",
+      "type": "hdr",
+      "path": "/assets/3d/environments/night.hdr",
+      "preload": true,
+      "fallback": "/assets/3d/environments/night-fallback.jpg"
+    },
+    {
+      "id": "environment-studio",
+      "name": "Studio Environment HDR",
+      "type": "hdr",
+      "path": "/assets/3d/environments/studio.hdr",
+      "preload": false,
+      "fallback": "/assets/3d/environments/studio-fallback.jpg"
+    },
+    {
+      "id": "preference-cluster-texture",
+      "name": "Preference Cluster Gradient",
+      "type": "texture",
+      "path": "/assets/3d/textures/cluster-gradient.png",
+      "preload": true,
+      "textureFormat": "ktx2"
+    },
+    {
+      "id": "decision-surface-normal",
+      "name": "Decision Surface Normal Map",
+      "type": "texture",
+      "path": "/assets/3d/textures/surface-normal.png",
+      "preload": false,
+      "textureFormat": "ktx2"
+    },
+    {
+      "id": "model-configurator-base",
+      "name": "Configurator Base Model",
+      "type": "gltf",
+      "path": "/assets/3d/models/configurator-base.glb",
+      "preload": false,
+      "compressionFormat": "draco",
+      "lodLevels": [
+        { "distance": 5, "path": "/assets/3d/models/configurator-base-lod0.glb" },
+        { "distance": 15, "path": "/assets/3d/models/configurator-base-lod1.glb" },
+        { "distance": 30, "path": "/assets/3d/models/configurator-base-lod2.glb" }
+      ]
+    },
+    {
+      "id": "annotation-marker",
+      "name": "Annotation Marker Model",
+      "type": "gltf",
+      "path": "/assets/3d/models/annotation-marker.glb",
+      "preload": true,
+      "compressionFormat": "draco"
+    },
+    {
+      "id": "grid-pattern",
+      "name": "Grid Pattern Texture",
+      "type": "texture",
+      "path": "/assets/3d/textures/grid-pattern.png",
+      "preload": true
+    },
+    {
+      "id": "particle-sprite",
+      "name": "Particle Sprite",
+      "type": "texture",
+      "path": "/assets/3d/textures/particle.png",
+      "preload": true
+    },
+    {
+      "id": "glow-sprite",
+      "name": "Glow Sprite",
+      "type": "texture",
+      "path": "/assets/3d/textures/glow.png",
+      "preload": true
+    },
+    {
+      "id": "noise-texture",
+      "name": "Noise Texture for Effects",
+      "type": "texture",
+      "path": "/assets/3d/textures/noise.png",
+      "preload": false
+    }
+  ],
+  "draco": {
+    "decoderPath": "/draco/",
+    "preload": true
+  },
+  "ktx2": {
+    "transcoderPath": "/basis/",
+    "preload": false
+  },
+  "settings": {
+    "maxConcurrentLoads": 4,
+    "retryAttempts": 3,
+    "retryDelay": 1000,
+    "cacheEnabled": true,
+    "cacheMaxAge": 86400000
+  }
+}
