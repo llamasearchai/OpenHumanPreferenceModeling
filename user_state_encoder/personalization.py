@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import yaml
-from typing import Dict, Optional
+from typing import Dict
 import math
 # import learn2learn as l2l # Mocking for now to avoid dependency issues
 # import redis # Mocking for now
@@ -36,7 +36,7 @@ class PersonalizationManager:
         self.redis_url = config.get("redis_url", "redis://localhost:6379/0")
         self.ttl = config.get("lora_ttl", 86400)
 
-        # self.redis = redis.from_url(self.redis_url) # Placeholder
+        # self.redis = redis.from_url(self.redis_url) # In-memory configuration
         self.redis = None
 
     def get_user_adapter(

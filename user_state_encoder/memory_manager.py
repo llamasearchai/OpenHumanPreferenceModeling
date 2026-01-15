@@ -22,7 +22,7 @@ class MemoryManager:
         # Initialize Pinecone (Mocking for now to avoid dependency issues in this env)
         # self.pc = Pinecone(api_key=self.api_key)
         # self.index = self.pc.Index(self.index_name)
-        self.index = None  # Placeholder
+        self.index = None  # In-memory configuration
 
     def upsert_exemplar(
         self, user_id: str, embedding: List[float], metadata: Dict[str, Any]

@@ -23,23 +23,23 @@ logger = logging.getLogger(__name__)
 
 
 class RecalibrationError(Exception):
-    pass
+    """Base exception for all recalibration errors."""
 
 
 class InsufficientDataError(RecalibrationError):
-    pass
+    """Raised when there is not enough data for recalibration."""
 
 
 class ValidationDataError(RecalibrationError):
-    pass
+    """Raised when validation data cannot be loaded or is invalid."""
 
 
 class ConvergenceFailedError(RecalibrationError):
-    pass
+    """Raised when temperature optimization fails to converge."""
 
 
 class RecalibrationInProgressError(RecalibrationError):
-    pass
+    """Raised when a recalibration job is already running."""
 
 
 @dataclass
@@ -103,31 +103,43 @@ def load_calibration_settings() -> CalibrationSettings:
             return fallback
         return int(value)
 
-    sample_rate = _get_env_float("CALIBRATION_SAMPLE_RATE", calibration_cfg.get("sample_rate", 0.01))
+    sample_rate = _get_env_float(
+        "CALIBRATION_SAMPLE_RATE", calibration_cfg.get("sample_rate", 0.01)
+    )
     ece_threshold = _get_env_float(
         "CALIBRATION_ECE_THRESHOLD", calibration_cfg.get("ece_threshold", 0.15)
     )
     check_interval_seconds = _get_env_int(
-        "CALIBRATION_CHECK_INTERVAL_SECONDS", calibration_cfg.get("check_interval_seconds", 3600)
+        "CALIBRATION_CHECK_INTERVAL_SECONDS",
+        calibration_cfg.get("check_interval_seconds", 3600),
     )
     consecutive_checks = _get_env_int(
         "CALIBRATION_CONSECUTIVE_CHECKS", calibration_cfg.get("consecutive_checks", 3)
     )
-    min_samples = _get_env_int("CALIBRATION_MIN_SAMPLES", calibration_cfg.get("min_samples", 1000))
+    min_samples = _get_env_int(
+        "CALIBRATION_MIN_SAMPLES", calibration_cfg.get("min_samples", 1000)
+    )
     max_iterations = _get_env_int(
         "CALIBRATION_MAX_ITERATIONS", calibration_cfg.get("max_iterations", 100)
     )
-    temp_min = _get_env_float("CALIBRATION_TEMPERATURE_MIN", calibration_cfg.get("temperature_min", 0.5))
-    temp_max = _get_env_float("CALIBRATION_TEMPERATURE_MAX", calibration_cfg.get("temperature_max", 5.0))
+    temp_min = _get_env_float(
+        "CALIBRATION_TEMPERATURE_MIN", calibration_cfg.get("temperature_min", 0.5)
+    )
+    temp_max = _get_env_float(
+        "CALIBRATION_TEMPERATURE_MAX", calibration_cfg.get("temperature_max", 5.0)
+    )
     validation_data_uri = os.getenv(
         "CALIBRATION_VALIDATION_DATA_URI", calibration_cfg.get("validation_data_uri")
     )
     ks_reference_uri = os.getenv(
         "CALIBRATION_REFERENCE_DATA_URI", calibration_cfg.get("reference_data_uri")
     )
-    ks_alpha = _get_env_float("CALIBRATION_POISONING_ALPHA", calibration_cfg.get("poisoning_alpha", 0.05))
+    ks_alpha = _get_env_float(
+        "CALIBRATION_POISONING_ALPHA", calibration_cfg.get("poisoning_alpha", 0.05)
+    )
     kafka_topic = os.getenv(
-        "CALIBRATION_KAFKA_TOPIC", calibration_cfg.get("kafka_topic", "calibration-events")
+        "CALIBRATION_KAFKA_TOPIC",
+        calibration_cfg.get("kafka_topic", "calibration-events"),
     )
     kafka_servers = os.getenv(
         "CALIBRATION_KAFKA_SERVERS", calibration_cfg.get("kafka_servers")
@@ -247,7 +259,12 @@ class EceThresholdTracker:
 
 
 class CalibrationMonitor:
-    def __init__(self, settings: CalibrationSettings, store: Optional[PredictionStore] = None, n_bins: int = 10):
+    def __init__(
+        self,
+        settings: CalibrationSettings,
+        store: Optional[PredictionStore] = None,
+        n_bins: int = 10,
+    ):
         self.settings = settings
         self.store = store or PredictionStore(settings.prediction_store_path)
         self._tracker = EceThresholdTracker(
@@ -323,7 +340,9 @@ def create_lock() -> LocalLock | RedisLock:
 def build_event_publisher(settings: CalibrationSettings) -> EventPublisher:
     if not settings.kafka_servers:
         raise RecalibrationError("CALIBRATION_KAFKA_SERVERS is required")
-    return KafkaEventPublisher(servers=settings.kafka_servers, topic=settings.kafka_topic)
+    return KafkaEventPublisher(
+        servers=settings.kafka_servers, topic=settings.kafka_topic
+    )
 
 
 def build_notifier(settings: CalibrationSettings) -> Notifier:
@@ -332,7 +351,7 @@ def build_notifier(settings: CalibrationSettings) -> Notifier:
     return SlackNotifier(settings.slack_webhook)
 
 
-def build_temperature_applier(settings: CalibrationSettings) -> TemperatureApplier:
+def build_temperature_applier(settings: CalibrationSettings) -> "TemperatureApplier":
     missing = []
     if not settings.configmap_name:
         missing.append("CALIBRATION_CONFIGMAP_NAME")
@@ -429,7 +448,9 @@ class ValidationDataFetcher:
         self._local_cache[path] = (logits, labels)
         return logits, labels
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8)
+    )
     def _fetch_s3(self, uri: str) -> Tuple[np.ndarray, np.ndarray]:
         try:
             import boto3
@@ -451,7 +472,9 @@ def _split_s3_uri(uri: str) -> Tuple[str, str]:
     return parts[0], parts[1]
 
 
-def _extract_logits_labels(data: np.lib.npyio.NpzFile | np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def _extract_logits_labels(
+    data: np.lib.npyio.NpzFile | np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
     if isinstance(data, np.lib.npyio.NpzFile):
         if "logits" not in data or "labels" not in data:
             raise ValidationDataError("Validation data missing logits or labels")
@@ -477,7 +500,9 @@ def _prepare_labels(labels: np.ndarray) -> np.ndarray:
     return labels
 
 
-def _logits_to_confidence(logits: np.ndarray, temperature: float) -> Tuple[np.ndarray, np.ndarray]:
+def _logits_to_confidence(
+    logits: np.ndarray, temperature: float
+) -> Tuple[np.ndarray, np.ndarray]:
     scaled = logits / temperature
     if scaled.ndim == 1:
         scaled = np.stack([np.zeros_like(scaled), scaled], axis=1)
@@ -557,7 +582,9 @@ def _optimize_temperature(
         for batch_logits, batch_labels in zip(
             _iter_batches(logits, batch_size), _iter_batches(labels, batch_size)
         ):
-            batch_logits_t = torch.tensor(batch_logits, dtype=torch.float32, device=device)
+            batch_logits_t = torch.tensor(
+                batch_logits, dtype=torch.float32, device=device
+            )
             batch_labels_t = torch.tensor(batch_labels, dtype=torch.long, device=device)
             loss = criterion(scaler(batch_logits_t), batch_labels_t)
             loss.backward()
@@ -570,7 +597,9 @@ def _optimize_temperature(
     temperature = float(scaler.temperature.item())
     temperature = clamp_temperature(temperature, bounds)
     scaler.temperature.data = torch.tensor([temperature], device=device)
-    iterations = optimizer.state.get(scaler.temperature, {}).get("n_iter", max_iterations)
+    iterations = optimizer.state.get(scaler.temperature, {}).get(
+        "n_iter", max_iterations
+    )
     return temperature, iterations
 
 
@@ -635,15 +664,21 @@ class RecalibrationRunner:
         start_time = time.time()
         warning = None
         try:
-            event_publisher = self.event_publisher or build_event_publisher(self.settings)
+            event_publisher = self.event_publisher or build_event_publisher(
+                self.settings
+            )
             notifier = self.notifier or build_notifier(self.settings)
-            temperature_applier = self.temperature_applier or build_temperature_applier(self.settings)
+            temperature_applier = self.temperature_applier or build_temperature_applier(
+                self.settings
+            )
             logits, labels = self.data_fetcher.fetch(validation_data_uri)
             if len(labels) < self.settings.min_samples:
                 raise InsufficientDataError("Not enough samples for recalibration")
 
             if self.settings.ks_reference_uri:
-                reference_logits, _ = self.data_fetcher.fetch(self.settings.ks_reference_uri)
+                reference_logits, _ = self.data_fetcher.fetch(
+                    self.settings.ks_reference_uri
+                )
                 _run_ks_test(logits, reference_logits, 1.0, self.settings.ks_alpha)
 
             pre_ece = compute_ece_from_logits(logits, labels, temperature=1.0)
@@ -661,7 +696,11 @@ class RecalibrationRunner:
             if iterations >= max_iterations:
                 warning = "max_iterations_reached"
             if post_ece > target_ece:
-                warning = "target_ece_not_met" if warning is None else f"{warning},target_ece_not_met"
+                warning = (
+                    "target_ece_not_met"
+                    if warning is None
+                    else f"{warning},target_ece_not_met"
+                )
 
             temperature_applier.apply(temperature)
             payload = {
@@ -700,7 +739,9 @@ class RecalibrationRunner:
             except Exception as notify_exc:
                 _log_event("notification_error", {"error": str(notify_exc)})
             try:
-                event_publisher = self.event_publisher or build_event_publisher(self.settings)
+                event_publisher = self.event_publisher or build_event_publisher(
+                    self.settings
+                )
                 event_publisher.publish(
                     "recalibration_failed",
                     {

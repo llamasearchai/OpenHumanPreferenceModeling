@@ -1,7 +1,7 @@
 import yaml
 import numpy as np
 import random
-from scipy.special import softmax
+from sklearn.linear_model import LogisticRegression
 from typing import List, Dict
 from active_learning.query_strategies import (
     UncertaintySampling,
@@ -54,6 +54,7 @@ class ActiveLearner:
         remaining = []
         for i, item in enumerate(self.unlabeled_pool):
             if i in seed_indices:
+                item["label"] = random.choice([0, 1])
                 new_labeled.append(item)
             else:
                 remaining.append(item)
@@ -65,17 +66,41 @@ class ActiveLearner:
             f"Initialized: Labeled={len(self.labeled_pool)}, Unlabeled={len(self.unlabeled_pool)}"
         )
 
-    def mock_train_model(self):
-        # Simulate model training and returning probs/embeddings for unlabeled
-        # Returns: probs (N, C), embeddings (N, D)
+    def train_model(self):
+        """
+        Train a simple internal model to estimate uncertainty.
+        If no labeled data, return uniform probabilities and random embeddings.
+        """
+        # If no labeled data, returns uniform random probs
         n_unlabeled = len(self.unlabeled_pool)
         if n_unlabeled == 0:
             return np.empty((0, 2)), np.empty((0, 768))
 
-        logits = np.random.rand(n_unlabeled, 2)
-        probs = softmax(logits, axis=1)  # Binary classification assumption
-        embeddings = np.array([item["features"] for item in self.unlabeled_pool])
-        return probs, embeddings
+        unlabeled_embeddings = np.array(
+            [item["features"] for item in self.unlabeled_pool]
+        )
+
+        if len(self.labeled_pool) < 2:
+            # Need at least two classes or some data to train
+            # Return random probs
+            return np.full((n_unlabeled, 2), 0.5), unlabeled_embeddings
+
+        # Extract features and labels
+        X_labeled = np.array([item["features"] for item in self.labeled_pool])
+        y_labeled = np.array([item["label"] for item in self.labeled_pool])
+
+        # Check class balance
+        if len(np.unique(y_labeled)) < 2:
+            # Only one class known, cannot train discriminator
+            return np.full((n_unlabeled, 2), 0.5), unlabeled_embeddings
+
+        # Train Model
+        clf = LogisticRegression(solver="liblinear", random_state=42)
+        clf.fit(X_labeled, y_labeled)
+
+        # Predict
+        probs = clf.predict_proba(unlabeled_embeddings)
+        return probs, unlabeled_embeddings
 
     def human_annotation(self, instances: List[Dict]):
         # Mock annotation
@@ -91,7 +116,7 @@ class ActiveLearner:
         print(f"Step: Strategy={strategy_name}, Budget={self.budget}")
 
         # 1. Train / Predict
-        probs, embeddings = self.mock_train_model()
+        probs, embeddings = self.train_model()
 
         # 2. Select
         strategy = self.strategies.get(strategy_name)
@@ -134,7 +159,7 @@ class ActiveLearner:
         """
         Returns indices of the next n samples to be annotated, without updating state.
         """
-        probs, embeddings = self.mock_train_model()
+        probs, embeddings = self.train_model()
         n_unlabeled = len(self.unlabeled_pool)
         if n_unlabeled == 0:
             return []

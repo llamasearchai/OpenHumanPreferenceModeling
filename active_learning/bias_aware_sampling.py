@@ -98,7 +98,7 @@ class BiasAwareSampler:
         # For each group g: |Selected_g| >= target_ratios[g] * n_select - tolerance
         # and |Selected_g| <= target_ratios[g] * n_select + tolerance
 
-        tolerance = 2  # Allowing slack of 2 items
+        tolerance = 1  # Allowing slack of 1 item
 
         groups = set(target_ratios.keys())
         # Map indices to groups

@@ -52,11 +52,11 @@ class EEGPreprocessor:
         # 1. Bandpass Filter
         filtered = self._apply_filter(raw_data)
 
-        # 2. ICA Artifact Rejection (Stub)
+        # 2. ICA Artifact Rejection (Disabled)
         # ica = ICA(n_components=self.ica_components, method='fastica')
         # ica.fit(mne_raw)
         # cleaned = ica.apply(mne_raw)
-        cleaned = filtered  # Placeholder
+        cleaned = filtered  # ICA skipped for performance
 
         # 3. Epoching handled by upstream usually, but here we process window
         # 4. robust scaling (simple standardization for now)

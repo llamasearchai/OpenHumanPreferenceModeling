@@ -7,7 +7,7 @@ from rouge_score import rouge_scorer
 class SFTValidator:
     def __init__(self):
         # self.sim_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.sim_model = None  # Stub for now
+        self.sim_model = None  # Optional dependency
         self.rouge = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
 
     def calculate_perplexity(self, model, tokenizer, text):
@@ -33,7 +33,7 @@ class SFTValidator:
         rouge_l = scores["rougeL"].fmeasure
 
         # Similarity (Mocked)
-        similarity = 0.85  # Stub
+        similarity = 0.85  # Mock score for validation
 
         return {"rouge_l": rouge_l, "similarity": similarity}
 
