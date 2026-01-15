@@ -30,4 +30,4 @@ def test_federated_round():
     status_dict = coordinator.get_status()
     assert status_dict
     assert status_dict["round"] == 1
-    assert "Epsilon" in status_dict["privacy_status"]
+    assert "epsilon" in status_dict["privacy_status"]

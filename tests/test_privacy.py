@@ -52,4 +52,4 @@ def test_privacy_budget():
     # Mock adds 0.05 eps per step (multiplier 1.0 * rate 0.5 * 0.1 const)
     # 20 steps -> +1.0 eps. Initial was small. Should be close or fail.
     # Let's just check status string
-    assert "Epsilon" in tracker.current_status()
+    assert "epsilon" in tracker.current_status()

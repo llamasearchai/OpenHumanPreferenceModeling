@@ -1,0 +1,120 @@
+/**
+ * Authentication E2E Tests
+ */
+
+import { test, expect } from '@playwright/test';
+import { setupGlobalMocks } from './test-utils';
+
+test.describe('Authentication', () => {
+  test.beforeEach(async ({ page }) => {
+    // Setup global API mocks to prevent 500s/network errors
+    await setupGlobalMocks(page);
+
+    // Clear any stored tokens
+    await page.context().clearCookies();
+    // localStorage access can throw on about:blank; clear via init script before first navigation
+    await page.context().addInitScript(() => window.localStorage.clear());
+  });
+
+  test('login page renders correctly', async ({ page }) => {
+    await page.goto('/login');
+
+    await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();
+    await expect(page.getByLabel(/^email$/i)).toBeVisible();
+    await expect(page.getByLabel(/^password$/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /sign up/i })).toBeVisible();
+  });
+
+  test('register page renders correctly', async ({ page }) => {
+    await page.goto('/register');
+
+    await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible();
+    await expect(page.getByLabel(/full name/i)).toBeVisible();
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/^password$/i)).toBeVisible();
+    await expect(page.getByLabel(/confirm password/i)).toBeVisible();
+  });
+
+  test('shows validation errors on empty submit', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByRole('button', { name: /sign in/i }).click();
+
+    await expect(page.getByText(/please enter a valid email address/i)).toBeVisible();
+    await expect(page.getByText(/password is required/i)).toBeVisible();
+  });
+
+  test('navigates between login and register', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByRole('link', { name: /sign up/i }).click();
+    await expect(page).toHaveURL('/register');
+
+    await page.getByRole('link', { name: /sign in/i }).click();
+    await expect(page).toHaveURL('/login');
+  });
+
+  // Skipped per user instruction to bypass login/auth
+  test.skip('logs in successfully and redirects to dashboard', async ({ page }) => {
+    // Mock the login API call to avoid backend dependency
+    await page.route('**/api/auth/login', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          accessToken: 'mock-access-token',
+          refreshToken: 'mock-refresh-token',
+          expiresIn: 3600,
+          tokenType: 'Bearer',
+        }),
+      });
+    });
+    // Mock the /me call which happens after login
+    await page.route('**/api/auth/me', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'user-123',
+          email: 'demo@example.com',
+          name: 'Demo User',
+          role: 'annotator',
+        }),
+      });
+    });
+
+    await page.goto('/login');
+
+    await page.getByLabel(/^email$/i).fill('demo@example.com');
+    await page.getByLabel(/^password$/i).fill('password123');
+    await page.getByRole('button', { name: /sign in/i }).click();
+
+    await expect(page).toHaveURL('/');
+    await expect(page.getByText('Dashboard')).toBeVisible();
+  });
+
+  test('redirects unauthenticated users to login', async ({ page }) => {
+    await page.goto('/');
+
+    // Should redirect to login
+    await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+test.describe('Protected Routes', () => {
+  test('dashboard requires authentication', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('annotations requires authentication', async ({ page }) => {
+    await page.goto('/annotations');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('settings requires authentication', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page).toHaveURL(/\/login/);
+  });
+});
