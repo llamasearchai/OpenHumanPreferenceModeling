@@ -34,6 +34,24 @@ describe('Input', () => {
       const input = screen.getByTestId('input');
       expect(input).toHaveAttribute('aria-invalid', 'true');
     });
+
+    it('renders with left element', () => {
+      render(<Input leftElement={<span data-testid="left-icon">@</span>} />);
+      expect(screen.getByTestId('left-icon')).toBeInTheDocument();
+    });
+
+    it('renders with right element', () => {
+      render(<Input rightElement={<span data-testid="right-icon">#</span>} />);
+      expect(screen.getByTestId('right-icon')).toBeInTheDocument();
+    });
+
+    it('renders search icon for search type', () => {
+      const { container } = render(<Input type="search" />);
+      // Search icon is Lucide Search.
+      // We can check if wrapper div exists or icon SVG.
+      const wrapper = container.querySelector('.pl-10'); // Search/Left element adds padding left
+      expect(wrapper).toBeInTheDocument();
+    });
   });
 
   describe('Interactions', () => {
@@ -64,7 +82,7 @@ describe('Input', () => {
   });
 
   describe('Password Input', () => {
-    it('toggles password visibility', async () => {
+    it('toggles password visibility (uncontrolled)', async () => {
       render(<Input type="password" label="Password" />);
 
       const input = screen.getByLabelText('Password');
@@ -73,6 +91,40 @@ describe('Input', () => {
       const toggleButton = screen.getByRole('button', { name: /show password/i });
       await userEvent.click(toggleButton);
 
+      expect(input).toHaveAttribute('type', 'text');
+    });
+
+    it('toggles password visibility (controlled)', async () => {
+      const handleToggle = vi.fn();
+      const { rerender } = render(
+        <Input 
+          type="password" 
+          label="Password" 
+          showPassword={false} 
+          onTogglePassword={handleToggle} 
+        />
+      );
+
+      const input = screen.getByLabelText('Password');
+      expect(input).toHaveAttribute('type', 'password');
+
+      const toggleButton = screen.getByRole('button', { name: /show password/i });
+      await userEvent.click(toggleButton);
+
+      expect(handleToggle).toHaveBeenCalledWith(true);
+      // Should likely still be password because we haven't updated props, 
+      // but let's check basic interaction first.
+      expect(input).toHaveAttribute('type', 'password');
+
+      // Now rerender with new state
+      rerender(
+        <Input 
+          type="password" 
+          label="Password" 
+          showPassword={true} 
+          onTogglePassword={handleToggle} 
+        />
+      );
       expect(input).toHaveAttribute('type', 'text');
     });
   });

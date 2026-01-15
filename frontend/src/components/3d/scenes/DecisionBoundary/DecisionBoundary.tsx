@@ -5,16 +5,21 @@
  * Shows confidence gradients from model predictions
  */
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import React, { useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
 import { getCanvasPropsForPreset, isWebGLSupported } from '@/lib/three/canvas-config';
 import { usePerformanceMonitor } from '@/lib/three/performance-monitor';
 import { EffectsPipeline, effectPresets } from '@/lib/three/effects/EffectsPipeline';
-import { A11yProvider, A11yCanvas, SceneFallback } from '@/lib/three/a11y/A11yScene';
-import { useLerp } from '@/lib/three/animations';
+import {
+  A11yProvider,
+  A11yCanvas,
+  KeyboardControls,
+  SceneFallback,
+  useA11y,
+} from '@/lib/three/a11y/A11yScene';
 
 // ============================================================================
 // Types
@@ -131,11 +136,23 @@ function SurfaceMesh({
     return geo;
   }, [surfaceData, colorGradient, quality]);
 
+  React.useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
   // Create wireframe geometry
   const wireframeGeometry = useMemo(() => {
     if (!showWireframe) return null;
     return new THREE.WireframeGeometry(geometry);
   }, [geometry, showWireframe]);
+
+  React.useEffect(() => {
+    return () => {
+      wireframeGeometry?.dispose();
+    };
+  }, [wireframeGeometry]);
 
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
@@ -196,18 +213,9 @@ interface AxisLabelsProps {
 }
 
 function AxisLabels({ xRange, yRange, zRange }: AxisLabelsProps): React.ReactElement {
-  const labelStyle: React.CSSProperties = {
-    color: 'white',
-    fontSize: 12,
-    fontFamily: 'monospace',
-    background: 'rgba(0, 0, 0, 0.6)',
-    padding: '2px 6px',
-    borderRadius: 4,
-    whiteSpace: 'nowrap',
-  };
-
+  // unused labelStyle removed
   const xCenter = (xRange[0] + xRange[1]) / 2;
-  const yCenter = (yRange[0] + yRange[1]) / 2;
+  // unused yCenter removed
 
   return (
     <group>
@@ -271,6 +279,11 @@ function SceneContent({
   showAxes = true,
   quality = 'high',
 }: SceneContentProps): React.ReactElement {
+  const { prefersReducedMotion } = useA11y();
+  const shouldAutoRotate = autoRotate && !prefersReducedMotion;
+  const floatSpeed = prefersReducedMotion ? 0 : 0.5;
+  const floatIntensity = prefersReducedMotion ? 0 : 0.1;
+
   // Performance monitoring
   usePerformanceMonitor({
     targetFps: quality === 'low' ? 30 : 60,
@@ -312,7 +325,7 @@ function SceneContent({
       <Environment preset="city" />
 
       {/* Surface */}
-      <AutoRotateContainer speed={autoRotateSpeed} enabled={autoRotate}>
+      <AutoRotateContainer speed={autoRotateSpeed} enabled={shouldAutoRotate}>
         <group
           position={[
             -(surfaceData.xRange[0] + surfaceData.xRange[1]) / 2,
@@ -320,7 +333,7 @@ function SceneContent({
             -(surfaceData.yRange[0] + surfaceData.yRange[1]) / 2,
           ]}
         >
-          <Float speed={0.5} rotationIntensity={0} floatIntensity={0.1}>
+          <Float speed={floatSpeed} rotationIntensity={0} floatIntensity={floatIntensity}>
             <SurfaceMesh
               surfaceData={surfaceData}
               colorGradient={colorGradient}
@@ -361,7 +374,7 @@ export function DecisionBoundary({
   autoRotate = true,
   autoRotateSpeed = 0.5,
   showWireframe = false,
-  enableHover = true,
+  // enableHover unused
   showAxes = true,
   quality = 'high',
   className,
@@ -386,6 +399,7 @@ export function DecisionBoundary({
       >
         <A11yProvider>
           <A11yCanvas sceneDescription="3D decision boundary surface showing model confidence levels">
+            <KeyboardControls />
             <SceneContent
               surfaceData={surfaceData}
               colorGradient={colorGradient}

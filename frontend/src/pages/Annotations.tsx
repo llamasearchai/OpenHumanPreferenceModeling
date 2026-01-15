@@ -7,7 +7,6 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { annotationApi } from '@/lib/api-client';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,15 +31,18 @@ import {
   Clock,
   BarChart3,
   Layers,
+  AlertTriangle,
 } from 'lucide-react';
 import type { PairwiseWinner, TaskContent } from '@/types/api';
 import { EmbeddingSpace } from '@/components/visualizations/EmbeddingSpace';
 import { AnnotationStats } from '@/components/widgets/AnnotationStats';
+import { Canvas3DErrorBoundary } from '@/components/ErrorBoundary';
+import { extractErrorMessage, ApiRequestError } from '@/lib/errors';
+import { getMockTask } from '@/lib/mock-data';
 
 const confidenceLabels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
 
 export default function AnnotationsPage() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -50,8 +52,9 @@ export default function AnnotationsPage() {
   const [selectedWinner, setSelectedWinner] = React.useState<PairwiseWinner | null>(null);
   const [ranking, setRanking] = React.useState<string[]>([]);
   const [likertScore, setLikertScore] = React.useState<number[]>([4]);
+  const [mockTaskIndex, setMockTaskIndex] = React.useState(0);
 
-  const annotatorId = user?.id || 'demo_user';
+  const annotatorId = 'demo_user';
   const confidenceValue = confidence[0] ?? 3;
 
   const {
@@ -63,14 +66,23 @@ export default function AnnotationsPage() {
     queryKey: ['tasks', 'next', annotatorId],
     queryFn: async () => {
       const result = await annotationApi.getNextTask(annotatorId);
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
     retry: false,
   });
 
+  const isNoTasksError = taskError instanceof ApiRequestError &&
+    (taskError.message.toLowerCase().includes('no task') ||
+     taskError.message.toLowerCase().includes('not found') ||
+     taskError.statusCode === 404);
+  const usingMockTask = !!taskError && !taskData && !isNoTasksError;
+  const resolvedTask = taskData ?? (usingMockTask ? getMockTask(mockTaskIndex, annotatorId) : null);
+
   React.useEffect(() => {
-    if (taskData) {
+    if (resolvedTask) {
       setStartTime(Date.now());
       setSelectedWinner(null);
       setConfidence([3]);
@@ -78,25 +90,32 @@ export default function AnnotationsPage() {
       setLikertScore([4]);
 
       // Initialize ranking order if ranking task
-      if (taskData.type === 'ranking' && 'responses' in taskData.content) {
-        const responses = (taskData.content as { responses: string[] }).responses;
-        setRanking(responses.map((_r: string, i: number) => `${i}`));
+      if (resolvedTask.type === 'ranking') {
+        const content = resolvedTask.content as Record<string, unknown>;
+        const responses = Array.isArray(content.responses) ? content.responses : [];
+        setRanking(responses.map((_r: unknown, i: number) => `${i}`));
       }
     }
-  }, [taskData]);
+  }, [resolvedTask]);
 
+  const activeTask = resolvedTask;
   const submitMutation = useMutation({
     mutationFn: async (responseData: Record<string, unknown>) => {
+      if (!activeTask) {
+        throw new Error('No active task to submit');
+      }
       const timeSpent = (Date.now() - startTime) / 1000;
       const result = await annotationApi.submitAnnotation({
-        task_id: taskData!.id,
+        task_id: activeTask.id,
         annotator_id: annotatorId,
-        annotation_type: taskData!.type,
+        annotation_type: activeTask.type,
         response_data: responseData,
         time_spent_seconds: timeSpent,
         confidence: confidenceValue,
       });
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
     onSuccess: () => {
@@ -110,7 +129,7 @@ export default function AnnotationsPage() {
     onError: (error) => {
       toast({
         title: 'Failed to submit',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: extractErrorMessage(error),
         variant: 'destructive',
       });
     },
@@ -121,11 +140,20 @@ export default function AnnotationsPage() {
   };
 
   const handleSubmit = () => {
-    if (!taskData) return;
+    if (!activeTask) return;
+    if (usingMockTask) {
+      toast({
+        title: 'Offline mode',
+        description: 'Backend unavailable. Mock task completed locally.',
+        variant: 'default',
+      });
+      setMockTaskIndex((idx) => idx + 1);
+      return;
+    }
 
     let responseData: Record<string, unknown>;
 
-    switch (taskData.type) {
+    switch (activeTask.type) {
       case 'pairwise':
         if (!selectedWinner) {
           toast({ title: 'Please select a winner', variant: 'destructive' });
@@ -169,6 +197,10 @@ export default function AnnotationsPage() {
   };
 
   const handleSkip = () => {
+    if (usingMockTask) {
+      setMockTaskIndex((idx) => idx + 1);
+      return;
+    }
     refetchTask();
   };
 
@@ -189,29 +221,33 @@ export default function AnnotationsPage() {
     );
   }
 
-  if (taskError) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Annotations</h1>
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
-            <h2 className="text-xl font-semibold mb-2">All caught up!</h2>
-            <p className="text-muted-foreground text-center max-w-md mb-4">
-              No annotation tasks are available right now. Check back later or refresh to try again.
-            </p>
-            <Button onClick={() => refetchTask()}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Check for tasks
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  if (taskError && !usingMockTask) {
+    if (isNoTasksError) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-3xl font-bold tracking-tight">Annotations</h1>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
+              <h2 className="text-xl font-semibold mb-2">All caught up!</h2>
+              <p className="text-muted-foreground text-center max-w-md mb-4">
+                No annotation tasks are available right now. Check back later or refresh to try again.
+              </p>
+              <Button onClick={() => refetchTask()}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Check for tasks
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    return null;
   }
 
-  if (!taskData) return null;
-  const content: TaskContent = taskData.content;
+  if (!resolvedTask) return null;
+  const content: TaskContent = resolvedTask.content;
   const prompt = ((): string => {
     const maybePrompt = (content as Record<string, unknown>).prompt;
     return typeof maybePrompt === 'string' ? maybePrompt : 'Task';
@@ -230,7 +266,7 @@ export default function AnnotationsPage() {
         <div className="flex items-center gap-2">
           <Badge variant="outline">
             <Clock className="mr-1 h-3 w-3" />
-            Task: {taskData.type}
+            Task: {resolvedTask.type}
           </Badge>
           <Button variant="outline" size="sm" onClick={handleSkip}>
             <SkipForward className="mr-2 h-4 w-4" />
@@ -238,6 +274,14 @@ export default function AnnotationsPage() {
           </Button>
         </div>
       </div>
+
+      {usingMockTask && (
+        <Alert variant="warning">
+          <AlertDescription>
+            Backend unavailable. Showing a mock task so you can continue reviewing the workflow.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="task" className="space-y-4">
@@ -255,15 +299,15 @@ export default function AnnotationsPage() {
             {prompt}
           </CardTitle>
           <CardDescription>
-            {taskData.type === 'pairwise' && 'Compare the two responses and select the better one'}
-            {taskData.type === 'ranking' && 'Rank the responses from best to worst'}
-            {taskData.type === 'likert' && 'Rate the response quality on a scale'}
-            {taskData.type === 'critique' && 'Provide detailed feedback on the response'}
+            {resolvedTask.type === 'pairwise' && 'Compare the two responses and select the better one'}
+            {resolvedTask.type === 'ranking' && 'Rank the responses from best to worst'}
+            {resolvedTask.type === 'likert' && 'Rate the response quality on a scale'}
+            {resolvedTask.type === 'critique' && 'Provide detailed feedback on the response'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {/* Pairwise Task */}
-          {taskData.type === 'pairwise' && 'response_a' in taskData.content && (
+          {resolvedTask.type === 'pairwise' && 'response_a' in resolvedTask.content && (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <Card
@@ -284,7 +328,7 @@ export default function AnnotationsPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="whitespace-pre-wrap">
-                      {String((taskData.content as Record<string, unknown>).response_a ?? '')}
+                      {String((resolvedTask.content as Record<string, unknown>).response_a ?? '')}
                     </p>
                   </CardContent>
                 </Card>
@@ -307,7 +351,7 @@ export default function AnnotationsPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="whitespace-pre-wrap">
-                      {String((taskData.content as Record<string, unknown>).response_b ?? '')}
+                      {String((resolvedTask.content as Record<string, unknown>).response_b ?? '')}
                     </p>
                   </CardContent>
                 </Card>
@@ -336,12 +380,12 @@ export default function AnnotationsPage() {
           )}
 
           {/* Likert Task */}
-          {taskData.type === 'likert' && (
+          {resolvedTask.type === 'likert' && (
             <div className="space-y-6">
               <Card>
                 <CardContent className="pt-6">
                   <p className="whitespace-pre-wrap">
-                    {String((taskData.content as Record<string, unknown>).response ?? '')}
+                    {String((resolvedTask.content as Record<string, unknown>).response ?? '')}
                   </p>
                 </CardContent>
               </Card>
@@ -364,12 +408,12 @@ export default function AnnotationsPage() {
           )}
 
           {/* Critique Task */}
-          {taskData.type === 'critique' && (
+          {resolvedTask.type === 'critique' && (
             <div className="space-y-4">
               <Card>
                 <CardContent className="pt-6">
                   <p className="whitespace-pre-wrap">
-                    {String((taskData.content as Record<string, unknown>).response ?? '')}
+                    {String((resolvedTask.content as Record<string, unknown>).response ?? '')}
                   </p>
                 </CardContent>
               </Card>
@@ -377,28 +421,31 @@ export default function AnnotationsPage() {
           )}
 
           {/* Ranking Task */}
-          {taskData.type === 'ranking' && 'responses' in taskData.content && (
-            <div className="space-y-4">
-              <Alert>
-                <AlertDescription>
-                  Drag responses to reorder them from best (top) to worst (bottom).
-                </AlertDescription>
-              </Alert>
-              <div className="space-y-2">
-                {((taskData.content as { responses: string[] }).responses || []).map(
-                  (response: string, index: number) => (
-                  <Card key={index} className="cursor-move">
-                    <CardHeader className="py-3">
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline">{index + 1}</Badge>
-                        <p className="text-sm flex-1">{response}</p>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
+          {resolvedTask.type === 'ranking' && (() => {
+            const taskContent = resolvedTask.content as Record<string, unknown>;
+            const responses = Array.isArray(taskContent.responses) ? taskContent.responses : [];
+            return responses.length > 0 ? (
+              <div className="space-y-4">
+                <Alert>
+                  <AlertDescription>
+                    Drag responses to reorder them from best (top) to worst (bottom).
+                  </AlertDescription>
+                </Alert>
+                <div className="space-y-2">
+                  {responses.map((response: unknown, index: number) => (
+                    <Card key={index} className="cursor-move">
+                      <CardHeader className="py-3">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline">{index + 1}</Badge>
+                          <p className="text-sm flex-1">{String(response)}</p>
+                        </div>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            ) : null;
+          })()}
         </CardContent>
       </Card>
 
@@ -426,7 +473,6 @@ export default function AnnotationsPage() {
           {/* Rationale */}
           <Textarea
             label="Rationale (optional)"
-            placeholder="Explain your reasoning..."
             value={rationale}
             onChange={(e) => setRationale(e.target.value)}
             maxLength={500}
@@ -441,8 +487,8 @@ export default function AnnotationsPage() {
             size="lg"
             isLoading={submitMutation.isPending}
             disabled={
-              (taskData.type === 'pairwise' && !selectedWinner) ||
-              (taskData.type === 'critique' && !rationale.trim())
+              (resolvedTask.type === 'pairwise' && !selectedWinner) ||
+              (resolvedTask.type === 'critique' && !rationale.trim())
             }
           >
             Submit Annotation
@@ -468,16 +514,18 @@ export default function AnnotationsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <EmbeddingSpace
-                maxPoints={1000}
-                colorBy="taskType"
-                onPointClick={(point) => {
-                  toast({
-                    title: 'Point selected',
-                    description: `Task: ${point.taskId}`,
-                  });
-                }}
-              />
+              <Canvas3DErrorBoundary height="600px">
+                <EmbeddingSpace
+                  maxPoints={1000}
+                  colorBy="taskType"
+                  onPointClick={(point) => {
+                    toast({
+                      title: 'Point selected',
+                      description: `Task: ${point.taskId}`,
+                    });
+                  }}
+                />
+              </Canvas3DErrorBoundary>
             </CardContent>
           </Card>
         </TabsContent>
@@ -491,15 +539,18 @@ function AnnotationHistory({ annotatorId }: { annotatorId: string }) {
   const {
     data: annotationsData,
     isLoading,
+    error,
   } = useQuery({
     queryKey: ['annotations', annotatorId],
     queryFn: async () => {
-      const result = await annotationApi.listAnnotations({
-        annotator_id: annotatorId,
+      const result = await annotationApi.getAnnotations({
+        annotatorId: annotatorId,
         page: 1,
-        page_size: 20,
+        pageSize: 20,
       });
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
   });
@@ -515,6 +566,25 @@ function AnnotationHistory({ annotatorId }: { annotatorId: string }) {
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-16 w-full" />
             ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            My Annotation History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground">
+            <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-destructive" />
+            <p>{extractErrorMessage(error, 'Failed to load annotation history')}</p>
           </div>
         </CardContent>
       </Card>

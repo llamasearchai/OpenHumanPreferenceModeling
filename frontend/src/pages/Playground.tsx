@@ -1,10 +1,12 @@
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { api } from '@/lib/api-client';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
 import {
   BarChart,
   Bar,
@@ -15,8 +17,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { Zap, Activity, Target, Download } from 'lucide-react';
-import { ExportButton } from '@/components/widgets/ExportButton';
+import { Zap, Activity, Target } from 'lucide-react';
 
 interface PredictionResult {
   probabilities: number[];
@@ -26,11 +27,18 @@ interface PredictionResult {
 
 export default function PlaygroundPage() {
   const [vector, setVector] = useState<number[]>([0.5, 0.5, 0.5, 0.5, 0.5]);
+  const mockPrediction: PredictionResult = {
+    probabilities: [0.18, 0.22, 0.15, 0.12, 0.33],
+    action_index: 4,
+    confidence: 0.33,
+  };
 
   const predictMutation = useMutation({
     mutationFn: async (vec: number[]) => {
       const res = await api.post<PredictionResult>('/api/predict', { state_vector: vec });
-      if (!res.success) throw new Error(res.error?.detail || 'Prediction failed');
+      if (!res.success) {
+        throw ApiRequestError.fromResponse(res);
+      }
       return res.data;
     },
   });
@@ -41,10 +49,11 @@ export default function PlaygroundPage() {
     setVector(newVector);
   };
 
-  const chartData = predictMutation.data?.probabilities.map((prob: number, idx: number) => ({
+  const resolvedPrediction = predictMutation.data ?? (predictMutation.error ? mockPrediction : undefined);
+  const chartData = resolvedPrediction?.probabilities.map((prob: number, idx: number) => ({
     name: `Action ${String.fromCharCode(65 + idx)}`,
     probability: prob,
-    isSelected: idx === predictMutation.data?.action_index,
+    isSelected: idx === resolvedPrediction?.action_index,
   })) || [];
 
   return (
@@ -118,7 +127,14 @@ export default function PlaygroundPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 min-h-[300px] flex flex-col">
-            {!predictMutation.data ? (
+            {predictMutation.error && (
+              <Alert variant="warning">
+                <AlertDescription>
+                  {extractErrorMessage(predictMutation.error, 'Prediction request failed.')} Showing mock output for validation.
+                </AlertDescription>
+              </Alert>
+            )}
+            {!resolvedPrediction ? (
               <div className="flex-1 flex items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg m-4">
                 Run a prediction to see results
               </div>
@@ -128,13 +144,13 @@ export default function PlaygroundPage() {
                   <div className="bg-secondary/20 p-4 rounded-lg">
                     <div className="text-sm text-muted-foreground">Selected Action</div>
                     <div className="text-2xl font-bold text-primary">
-                      Action {String.fromCharCode(65 + predictMutation.data.action_index)}
+                      Action {String.fromCharCode(65 + resolvedPrediction.action_index)}
                     </div>
                   </div>
                   <div className="bg-secondary/20 p-4 rounded-lg">
                     <div className="text-sm text-muted-foreground">Model Confidence</div>
                     <div className="text-2xl font-bold text-primary">
-                      {(predictMutation.data.confidence * 100).toFixed(1)}%
+                      {(resolvedPrediction.confidence * 100).toFixed(1)}%
                     </div>
                   </div>
                 </div>

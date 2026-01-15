@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+
 /**
  * Active Learning Dashboard Page
  *
@@ -50,6 +50,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -61,100 +62,20 @@ import {
   Legend,
 } from 'recharts';
 
-// Types
-interface QueueItem {
-  id: string;
-  text: string;
-  uncertaintyScore: number;
-  diversityScore: number;
-  iidScore: number;
-  compositeRank: number;
-  createdAt: string;
-}
+// Types are imported from @/types/api through apiClient
+import { apiClient } from '@/lib/api-client';
+import { QueueItem, ALConfig as ActiveLearningConfig, ALStatus as ActiveLearningStatus } from '@/types/api';
+import {
+  mockActiveLearningConfig,
+  mockActiveLearningQueue,
+  mockActiveLearningStatus,
+} from '@/lib/mock-data';
 
 interface StrategyMetrics {
   strategy: string;
   accuracyGain: number[];
   samplesUsed: number[];
   iterations: number;
-}
-
-interface ActiveLearningConfig {
-  budget: number;
-  batchSize: number;
-  strategy: string;
-  seedSize: number;
-}
-
-interface ActiveLearningStatus {
-  labeledCount: number;
-  unlabeledCount: number;
-  budgetRemaining: number;
-  currentStrategy: string;
-  lastUpdated: string;
-}
-
-// Mock API functions
-async function fetchQueue(): Promise<QueueItem[]> {
-  // In production: return fetch('/api/active-learning/queue').then(r => r.json());
-  return Array.from({ length: 20 }, (_, i) => ({
-    id: `sample-${i}`,
-    text: `Sample text ${i}: This is a candidate for annotation...`,
-    uncertaintyScore: Math.random(),
-    diversityScore: Math.random(),
-    iidScore: Math.random(),
-    compositeRank: i + 1,
-    createdAt: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-  }));
-}
-
-async function fetchStrategyComparison(): Promise<StrategyMetrics[]> {
-  const iterations = 10;
-  return [
-    {
-      strategy: 'Uncertainty',
-      accuracyGain: Array.from({ length: iterations }, (_, i) =>
-        0.5 + 0.4 * (1 - Math.exp(-i / 3))
-      ),
-      samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
-      iterations,
-    },
-    {
-      strategy: 'Diversity',
-      accuracyGain: Array.from({ length: iterations }, (_, i) =>
-        0.5 + 0.35 * (1 - Math.exp(-i / 4))
-      ),
-      samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
-      iterations,
-    },
-    {
-      strategy: 'IID',
-      accuracyGain: Array.from({ length: iterations }, (_, i) =>
-        0.5 + 0.42 * (1 - Math.exp(-i / 2.5))
-      ),
-      samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
-      iterations,
-    },
-  ];
-}
-
-async function fetchStatus(): Promise<ActiveLearningStatus> {
-  return {
-    labeledCount: 150,
-    unlabeledCount: 850,
-    budgetRemaining: 50,
-    currentStrategy: 'iid',
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-async function fetchConfig(): Promise<ActiveLearningConfig> {
-  return {
-    budget: 200,
-    batchSize: 10,
-    strategy: 'iid',
-    seedSize: 20,
-  };
 }
 
 // Strategy explanations
@@ -315,7 +236,7 @@ function ConfigDialog({
               value={localConfig.strategy}
               onValueChange={(v) => setLocalConfig((c) => ({ ...c, strategy: v }))}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="Active learning strategy">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -329,11 +250,11 @@ function ConfigDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Batch Size</label>
-              <Badge variant="outline">{localConfig.batchSize}</Badge>
+              <Badge variant="outline">{localConfig.batch_size}</Badge>
             </div>
             <Slider
-              value={[localConfig.batchSize]}
-              onValueChange={([v]) => setLocalConfig((c) => ({ ...c, batchSize: v ?? c.batchSize }))}
+              value={[localConfig.batch_size]}
+              onValueChange={([v]) => setLocalConfig((c) => ({ ...c, batch_size: v ?? c.batch_size }))}
               min={1}
               max={50}
               step={1}
@@ -370,48 +291,127 @@ export default function ActiveLearningPage() {
   const [selectedStrategy, setSelectedStrategy] = React.useState<string>('iid');
 
   // Queries
-  const { data: queue, isLoading: queueLoading } = useQuery({
+  const {
+    data: queue,
+    isLoading: queueLoading,
+    error: queueError,
+  } = useQuery<QueueItem[]>({
     queryKey: ['active-learning', 'queue'],
-    queryFn: fetchQueue,
+    queryFn: async () => {
+      const result = await apiClient.activeLearning.getQueue();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
+    },
     refetchInterval: 30000,
   });
 
-  const { data: comparison, isLoading: comparisonLoading } = useQuery({
+  // Mock comparison data for now since backend doesn't support it yet
+  const { data: comparison, isLoading: comparisonLoading } = useQuery<StrategyMetrics[]>({
     queryKey: ['active-learning', 'comparison'],
-    queryFn: fetchStrategyComparison,
+    queryFn: async () => {
+        // Keeping mock for comparison chart as backend doesn't have history
+        const iterations = 10;
+        return [
+            {
+            strategy: 'Uncertainty',
+            accuracyGain: Array.from({ length: iterations }, (_, i) =>
+                0.5 + 0.4 * (1 - Math.exp(-i / 3))
+            ),
+            samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
+            iterations,
+            },
+            {
+            strategy: 'Diversity',
+            accuracyGain: Array.from({ length: iterations }, (_, i) =>
+                0.5 + 0.35 * (1 - Math.exp(-i / 4))
+            ),
+            samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
+            iterations,
+            },
+            {
+            strategy: 'IID',
+            accuracyGain: Array.from({ length: iterations }, (_, i) =>
+                0.5 + 0.42 * (1 - Math.exp(-i / 2.5))
+            ),
+            samplesUsed: Array.from({ length: iterations }, (_, i) => (i + 1) * 10),
+            iterations,
+            },
+        ];
+    },
   });
 
-  const { data: status, isLoading: statusLoading } = useQuery({
+  const {
+    data: status,
+    isLoading: statusLoading,
+    error: statusError,
+  } = useQuery<ActiveLearningStatus>({
     queryKey: ['active-learning', 'status'],
-    queryFn: fetchStatus,
+    queryFn: async () => {
+        const result = await apiClient.activeLearning.getStatus();
+        if (!result.success) {
+          throw ApiRequestError.fromResponse(result);
+        }
+        return result.data;
+    },
     refetchInterval: 10000,
   });
 
-  const { data: config } = useQuery({
+  const {
+    data: config,
+    error: configError,
+  } = useQuery<ActiveLearningConfig>({
     queryKey: ['active-learning', 'config'],
-    queryFn: fetchConfig,
+    queryFn: async () => {
+        const result = await apiClient.activeLearning.getConfig();
+        if (!result.success) {
+          throw ApiRequestError.fromResponse(result);
+        }
+        return result.data;
+    },
   });
 
   // Mutations
   const updateConfigMutation = useMutation({
     mutationFn: async (newConfig: ActiveLearningConfig) => {
-      // In production: return fetch('/api/active-learning/config', { method: 'PATCH', body: JSON.stringify(newConfig) });
-      return newConfig;
+      const result = await apiClient.activeLearning.updateConfig(newConfig);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['active-learning'] });
       toast({ title: 'Configuration updated', variant: 'success' });
     },
+    onError: (error) => {
+      toast({
+        title: 'Failed to update configuration',
+        description: extractErrorMessage(error),
+        variant: 'destructive',
+      });
+    },
   });
 
   const refreshPredictionsMutation = useMutation({
     mutationFn: async () => {
-      // In production: return fetch('/api/active-learning/refresh', { method: 'POST' });
-      await new Promise((r) => window.setTimeout(r, 1000));
+      const result = await apiClient.activeLearning.refresh();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['active-learning', 'queue'] });
       toast({ title: 'Predictions refreshed', variant: 'success' });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to refresh predictions',
+        description: extractErrorMessage(error),
+        variant: 'destructive',
+      });
     },
   });
 
@@ -420,8 +420,28 @@ export default function ActiveLearningPage() {
     window.location.href = `/annotations?taskId=${id}`;
   };
 
-  const budgetProgress = status
-    ? ((status.budgetRemaining / (config?.budget || 200)) * 100)
+  const resolvedQueue = queue?.length ? queue : queueError ? mockActiveLearningQueue : [];
+  const resolvedStatus = status ?? (statusError ? mockActiveLearningStatus : undefined);
+  const resolvedConfig = config ?? (configError ? mockActiveLearningConfig : undefined);
+  const usingMockData = !!queueError || !!statusError || !!configError;
+
+  const sortedQueue = React.useMemo(() => {
+    const items = [...resolvedQueue];
+    switch (selectedStrategy) {
+      case 'uncertainty':
+        return items.sort((a, b) => b.uncertaintyScore - a.uncertaintyScore);
+      case 'diversity':
+        return items.sort((a, b) => b.diversityScore - a.diversityScore);
+      case 'iid':
+        return items.sort((a, b) => b.iidScore - a.iidScore);
+      case 'composite':
+      default:
+        return items.sort((a, b) => a.compositeRank - b.compositeRank);
+    }
+  }, [resolvedQueue, selectedStrategy]);
+
+  const budgetProgress = resolvedStatus
+    ? ((resolvedStatus.budgetRemaining / (resolvedConfig?.budget || 200)) * 100)
     : 0;
 
   return (
@@ -446,11 +466,20 @@ export default function ActiveLearningPage() {
             />
             Refresh Predictions
           </Button>
-          {config && (
-            <ConfigDialog config={config} onSave={(c) => updateConfigMutation.mutate(c)} />
+          {resolvedConfig && (
+            <ConfigDialog config={resolvedConfig} onSave={(c) => updateConfigMutation.mutate(c)} />
           )}
         </div>
       </div>
+
+      {usingMockData && (
+        <Alert variant="warning">
+          <AlertTitle>Using mock data</AlertTitle>
+          <AlertDescription>
+            Active learning data could not be loaded. Showing mock data for validation.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Status Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -464,7 +493,7 @@ export default function ActiveLearningPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">{status?.labeledCount}</div>
+                <div className="text-2xl font-bold">{resolvedStatus?.labeledCount}</div>
                 <p className="text-xs text-muted-foreground">samples annotated</p>
               </>
             )}
@@ -481,7 +510,7 @@ export default function ActiveLearningPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">{status?.unlabeledCount}</div>
+                <div className="text-2xl font-bold">{resolvedStatus?.unlabeledCount}</div>
                 <p className="text-xs text-muted-foreground">samples remaining</p>
               </>
             )}
@@ -498,7 +527,7 @@ export default function ActiveLearningPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">{status?.budgetRemaining}</div>
+                <div className="text-2xl font-bold">{resolvedStatus?.budgetRemaining}</div>
                 <Progress value={budgetProgress} className="mt-2" />
               </>
             )}
@@ -516,7 +545,7 @@ export default function ActiveLearningPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold capitalize">
-                  {status?.currentStrategy || 'IID'}
+                  {resolvedStatus?.currentStrategy || 'IID'}
                 </div>
                 <p className="text-xs text-muted-foreground">active strategy</p>
               </>
@@ -564,9 +593,9 @@ export default function ActiveLearningPage() {
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
                 </div>
-              ) : queue && queue.length > 0 ? (
+              ) : sortedQueue.length > 0 ? (
                 <div className="space-y-3">
-                  {queue.slice(0, 10).map((item) => (
+                  {sortedQueue.slice(0, 10).map((item) => (
                     <QueueItemRow key={item.id} item={item} onAnnotate={handleAnnotate} />
                   ))}
                 </div>

@@ -10,30 +10,37 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   RealtimeClient,
   getRealtimeClient,
+  MessageTypes,
   MessageType,
   WebSocketMessage,
   ConnectionState,
 } from '@/lib/websocket-client';
-import { useAuth } from '@/contexts/AuthContext';
+import { getAccessToken } from '@/lib/api-client';
+import { useAuthStore } from '@/stores/auth-store';
 
 /**
  * Hook to manage WebSocket connection lifecycle
  */
 export function useRealtimeConnection() {
-  const { isAuthenticated } = useAuth();
+  const accessToken = useAuthStore((state) => state.accessToken);
   const [state, setState] = useState<ConnectionState>('disconnected');
   const [error, setError] = useState<Error | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-
     const client = getRealtimeClient();
     clientRef.current = client;
 
+    // No-auth mode: only attempt to connect if we have a token available.
+    // This prevents pages from crashing when AuthContext/ProtectedRoute are removed.
+    const token = accessToken ?? getAccessToken();
+    if (!token) {
+      setState('disconnected');
+      return;
+    }
+
     const unsubState = client.onStateChange((newState) => {
+
       setState(newState);
       if (newState === 'connected') {
         setError(null);
@@ -41,16 +48,18 @@ export function useRealtimeConnection() {
     });
 
     const unsubError = client.onError((err) => {
+
       setError(err);
     });
 
-    client.connect();
+    client.connect(token);
 
     return () => {
       unsubState();
       unsubError();
+      client.disconnect();
     };
-  }, [isAuthenticated]);
+  }, [accessToken]); // Reconnect if auth state changes
 
   const reconnect = useCallback(() => {
     clientRef.current?.connect();
@@ -69,7 +78,7 @@ export function useRealtimeConnection() {
  * Hook to subscribe to specific message types
  */
 export function useRealtimeMessage<T = unknown>(
-  messageType: string,
+  messageType: MessageType,
   handler: (payload: T, message: WebSocketMessage) => void
 ) {
   const handlerRef = useRef(handler);
@@ -95,19 +104,19 @@ export function useRealtimeQueryInvalidation() {
   useEffect(() => {
     const client = getRealtimeClient();
 
-    const unsubMetrics = client.on(MessageType.METRIC_UPDATE, () => {
+    const unsubMetrics = client.on(MessageTypes.METRIC_UPDATE, () => {
       queryClient.invalidateQueries({ queryKey: ['metrics'] });
     });
 
-    const unsubAlerts = client.on(MessageType.ALERT_UPDATE, () => {
+    const unsubAlerts = client.on(MessageTypes.ALERT_UPDATE, () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
     });
 
-    const unsubTasks = client.on(MessageType.TASK_ASSIGNED, () => {
+    const unsubTasks = client.on(MessageTypes.TASK_ASSIGNED, () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     });
 
-    const unsubCalibration = client.on(MessageType.CALIBRATION_STATUS, () => {
+    const unsubCalibration = client.on(MessageTypes.CALIBRATION_STATUS, () => {
       queryClient.invalidateQueries({ queryKey: ['calibration'] });
     });
 
@@ -133,7 +142,7 @@ export function useRealtimeMetrics(
   } | null>(null);
 
   useRealtimeMessage<{ name: string; value: number; timestamp: string }>(
-    MessageType.METRIC_UPDATE,
+    MessageTypes.METRIC_UPDATE,
     (payload) => {
       setLatestMetric(payload);
       onUpdate?.(payload);
@@ -169,7 +178,7 @@ export function useRealtimeAlerts(
     severity: string;
     status: string;
     message: string;
-  }>(MessageType.ALERT_UPDATE, (payload) => {
+  }>(MessageTypes.ALERT_UPDATE, (payload) => {
     setLatestAlert(payload);
     onUpdate?.(payload);
   });
@@ -203,7 +212,7 @@ export function useRealtimeTrainingProgress(
     loss: number;
     learning_rate: number;
     eta_seconds: number;
-  }>(MessageType.TRAINING_PROGRESS, (payload) => {
+  }>(MessageTypes.TRAINING_PROGRESS, (payload) => {
     setProgress(payload);
     onUpdate?.(payload);
   });
@@ -231,7 +240,7 @@ export function useRealtimeCalibration(
     ece: number;
     triggered: boolean;
     in_progress: boolean;
-  }>(MessageType.CALIBRATION_STATUS, (payload) => {
+  }>(MessageTypes.CALIBRATION_STATUS, (payload) => {
     setStatus(payload);
     onUpdate?.(payload);
   });

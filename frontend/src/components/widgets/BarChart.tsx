@@ -59,6 +59,9 @@ export function BarChart({
   formatTooltip,
   onBarClick,
 }: BarChartProps) {
+  const isJSDOM =
+    typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
+
   if (isLoading) {
     return <Skeleton className="w-full" style={{ height }} />;
   }
@@ -96,48 +99,91 @@ export function BarChart({
         </CardHeader>
       )}
       <CardContent>
-        <div style={{ height, width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <RechartsBarChart
-              data={data}
-              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        {isJSDOM ? (
+          <RechartsBarChart
+            data={data}
+            width={640}
+            height={height}
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" opacity={0.3} />}
+            <XAxis
+              dataKey={xAxisKey}
+              tick={{ fontSize: 12 }}
+              {...(xAxisLabel ? { label: { value: xAxisLabel, position: 'insideBottom', offset: -5 } } : {})}
+            />
+            <YAxis
+              tick={{ fontSize: 12 }}
+              {...(yAxisLabel ? { label: { value: yAxisLabel, angle: -90, position: 'insideLeft' } } : {})}
+              {...(formatYAxis ? { tickFormatter: formatYAxis } : {})}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(var(--popover))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+              }}
+              formatter={(value: number) => [
+                formatTooltip ? formatTooltip(value) : value.toFixed(2),
+                dataKey,
+              ]}
+            />
+            {showLegend && <Legend />}
+            <Bar
+              dataKey={dataKey}
+              fill={colors[0]}
+              radius={[4, 4, 0, 0]}
+              {...(onBarClick ? { onClick: onBarClick } : {})}
             >
-              {showGrid && <CartesianGrid strokeDasharray="3 3" opacity={0.3} />}
-              <XAxis
-                dataKey={xAxisKey}
-                tick={{ fontSize: 12 }}
-                {...(xAxisLabel ? { label: { value: xAxisLabel, position: 'insideBottom', offset: -5 } } : {})}
-              />
-              <YAxis
-                tick={{ fontSize: 12 }}
-                {...(yAxisLabel ? { label: { value: yAxisLabel, angle: -90, position: 'insideLeft' } } : {})}
-                {...(formatYAxis ? { tickFormatter: formatYAxis } : {})}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--popover))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '6px',
-                }}
-                formatter={(value: number) => [
-                  formatTooltip ? formatTooltip(value) : value.toFixed(2),
-                  dataKey,
-                ]}
-              />
-              {showLegend && <Legend />}
-              <Bar
-                dataKey={dataKey}
-                fill={colors[0]}
-                radius={[4, 4, 0, 0]}
-                {...(onBarClick ? { onClick: onBarClick } : {})}
+              {data.map((_entry, index) => (
+                <Cell key={`cell-${index}`} fill={getColor(index)} />
+              ))}
+            </Bar>
+          </RechartsBarChart>
+        ) : (
+          <div style={{ height, width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsBarChart
+                data={data}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
-                {data.map((_entry, index) => (
-                  <Cell key={`cell-${index}`} fill={getColor(index)} />
-                ))}
-              </Bar>
-            </RechartsBarChart>
-          </ResponsiveContainer>
-        </div>
+                {showGrid && <CartesianGrid strokeDasharray="3 3" opacity={0.3} />}
+                <XAxis
+                  dataKey={xAxisKey}
+                  tick={{ fontSize: 12 }}
+                  {...(xAxisLabel ? { label: { value: xAxisLabel, position: 'insideBottom', offset: -5 } } : {})}
+                />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  {...(yAxisLabel ? { label: { value: yAxisLabel, angle: -90, position: 'insideLeft' } } : {})}
+                  {...(formatYAxis ? { tickFormatter: formatYAxis } : {})}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '6px',
+                  }}
+                  formatter={(value: number) => [
+                    formatTooltip ? formatTooltip(value) : value.toFixed(2),
+                    dataKey,
+                  ]}
+                />
+                {showLegend && <Legend />}
+                <Bar
+                  dataKey={dataKey}
+                  fill={colors[0]}
+                  radius={[4, 4, 0, 0]}
+                  {...(onBarClick ? { onClick: onBarClick } : {})}
+                >
+                  {data.map((_entry, index) => (
+                    <Cell key={`cell-${index}`} fill={getColor(index)} />
+                  ))}
+                </Bar>
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

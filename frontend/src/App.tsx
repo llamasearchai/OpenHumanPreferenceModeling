@@ -1,17 +1,13 @@
-import { Suspense, lazy } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { queryClient } from './lib/query/query-client';
-import { AuthProvider } from './contexts/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from './components/ui/toaster';
 import { Skeleton } from './components/ui/skeleton';
 
-// Eager imports for critical path (login, initial load)
-import LoginPage from './pages/Login';
-import RegisterPage from './pages/Register';
+// Eager imports for critical path
 import DashboardPage from './pages/Dashboard';
 import NotFoundPage from './pages/NotFound';
 
@@ -43,118 +39,85 @@ function PageSkeleton() {
   );
 }
 
+function withPageSuspense(element: React.ReactNode) {
+  return <Suspense fallback={<PageSkeleton />}>{element}</Suspense>;
+}
+
+const router = createBrowserRouter(
+  [
+    // App shell
+    {
+      path: '/',
+      element: <AppLayout />,
+      children: [
+        { index: true, element: <DashboardPage /> },
+        { path: 'dashboard', element: <Navigate to="/" replace /> },
+        {
+          path: 'annotations',
+          element: withPageSuspense(<AnnotationsPage />),
+        },
+        {
+          path: 'metrics',
+          element: withPageSuspense(<MetricsPage />),
+        },
+        {
+          path: 'alerts',
+          element: withPageSuspense(<AlertsPage />),
+        },
+        {
+          path: 'calibration',
+          element: withPageSuspense(<CalibrationPage />),
+        },
+        {
+          path: 'active-learning',
+          element: withPageSuspense(<ActiveLearningPage />),
+        },
+        {
+          path: 'federated-learning',
+          element: withPageSuspense(<FederatedLearningPage />),
+        },
+        {
+          path: 'quality-control',
+          element: withPageSuspense(<QualityControlPage />),
+        },
+        {
+          path: 'training',
+          element: withPageSuspense(<TrainingPage />),
+        },
+        {
+          path: 'settings',
+          element: withPageSuspense(<SettingsPage />),
+        },
+        {
+          path: 'playground',
+          element: withPageSuspense(<PlaygroundPage />),
+        },
+      ],
+    },
+
+    // Catch-all
+    { path: '*', element: <NotFoundPage /> },
+  ],
+  { future: { v7_relativeSplatPath: true } }
+);
+
 function App() {
+  React.useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7259/ingest/44e72182-20fc-4ac5-ace5-6d05735c6915',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:mount',message:'App mounted',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+  }, []);
+
   return (
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ErrorBoundary>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-
-              {/* Protected app shell */}
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <AppLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<DashboardPage />} />
-                <Route path="/dashboard" element={<Navigate to="/" replace />} />
-                <Route
-                  path="/annotations"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <AnnotationsPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/metrics"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <MetricsPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/alerts"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <AlertsPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/calibration"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <CalibrationPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/active-learning"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <ActiveLearningPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/federated-learning"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <FederatedLearningPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/quality-control"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <QualityControlPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/training"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <TrainingPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <SettingsPage />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/playground"
-                  element={
-                    <Suspense fallback={<PageSkeleton />}>
-                      <PlaygroundPage />
-                    </Suspense>
-                  }
-                />
-              </Route>
-
-              {/* Catch-all */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-
-            <Toaster />
-          </ErrorBoundary>
-        </AuthProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary>
+        <RouterProvider
+          router={router}
+          future={{ v7_startTransition: true }}
+        />
+        <Toaster />
+      </ErrorBoundary>
+    </QueryClientProvider>
   );
 }
 

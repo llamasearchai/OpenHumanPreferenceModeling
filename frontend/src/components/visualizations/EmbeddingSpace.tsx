@@ -13,7 +13,7 @@
  */
 
 import * as React from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, type ThreeEvent, useThree } from '@react-three/fiber';
 import {
   OrbitControls,
   PerspectiveCamera,
@@ -21,7 +21,18 @@ import {
   Bounds,
 } from '@react-three/drei';
 import * as THREE from 'three';
+import { BarChart2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { isWebGLSupported } from '@/lib/three/canvas-config';
+import {
+  A11yCanvas,
+  A11yProvider,
+  KeyboardControls,
+  SceneFallback,
+  useA11y,
+} from '@/lib/three/a11y/A11yScene';
+
+const MAX_A11Y_POINTS = 200;
 
 // Types
 interface EmbeddingPoint {
@@ -40,6 +51,8 @@ interface EmbeddingSpaceProps {
   onSelectionChange?: (points: EmbeddingPoint[]) => void;
   maxPoints?: number;
   colorBy?: 'confidence' | 'agreement' | 'recency' | 'taskType';
+  /** Height of the canvas - use responsive classes like 'h-96 md:h-[600px]' */
+  height?: string;
 }
 
 // Color utilities
@@ -113,8 +126,8 @@ interface InstancedPointsProps {
   colorBy: EmbeddingSpaceProps['colorBy'];
   selectedIds: Set<string>;
   onPointClick: (point: EmbeddingPoint) => void;
-  hoveredId: string | null;
   setHoveredId: (id: string | null) => void;
+  focusedId?: string | null;
 }
 
 function InstancedPoints({
@@ -122,11 +135,65 @@ function InstancedPoints({
   colorBy,
   selectedIds,
   onPointClick,
-  hoveredId,
   setHoveredId,
+  focusedId,
 }: InstancedPointsProps) {
   const meshRef = React.useRef<THREE.InstancedMesh>(null);
-  const { camera, raycaster, pointer } = useThree();
+  const lastHoverIndexRef = React.useRef<number | null>(null);
+  const tempObjectRef = React.useRef(new THREE.Object3D());
+  const focusedIndexRef = React.useRef<number | null>(null);
+
+  const getBaseScale = React.useCallback(
+    (point: EmbeddingPoint) => (selectedIds.has(point.id) ? 1.3 : 1.0),
+    [selectedIds]
+  );
+
+  const getBaseColor = React.useCallback(
+    (point: EmbeddingPoint) => {
+      const baseColor = getPointColor(point, colorBy);
+      if (selectedIds.has(point.id)) {
+        return new THREE.Color(1, 1, 1);
+      }
+      return baseColor;
+    },
+    [colorBy, selectedIds]
+  );
+
+  const indexById = React.useMemo(
+    () => new Map(points.map((point, index) => [point.id, index])),
+    [points]
+  );
+
+  const updateInstance = React.useCallback(
+    (index: number, point: EmbeddingPoint, scale: number, color: THREE.Color) => {
+      if (!meshRef.current) return;
+      const tempObject = tempObjectRef.current;
+      tempObject.position.set(...point.position);
+      tempObject.scale.setScalar(scale);
+      tempObject.updateMatrix();
+      meshRef.current.setMatrixAt(index, tempObject.matrix);
+      meshRef.current.setColorAt(index, color);
+      meshRef.current.instanceMatrix.needsUpdate = true;
+      if (meshRef.current.instanceColor) {
+        meshRef.current.instanceColor.needsUpdate = true;
+      }
+    },
+    []
+  );
+
+  const applyVisuals = React.useCallback(
+    (index: number) => {
+      const point = points[index];
+      if (!point) return;
+      const isHovered = index === lastHoverIndexRef.current;
+      const isFocused = index === focusedIndexRef.current;
+      const scaleMultiplier = isHovered ? 1.5 : isFocused ? 1.3 : 1;
+      const colorMultiplier = isHovered ? 1.5 : isFocused ? 1.3 : 1;
+      const color = getBaseColor(point).multiplyScalar(colorMultiplier);
+      updateInstance(index, point, getBaseScale(point) * scaleMultiplier, color);
+    },
+    [points, getBaseColor, getBaseScale, updateInstance]
+  );
 
   // Update instance matrices and colors
   React.useEffect(() => {
@@ -136,24 +203,16 @@ function InstancedPoints({
     const tempColor = new THREE.Color();
 
     points.forEach((point, i) => {
-      // Position
       tempObject.position.set(...point.position);
-
-      // Scale based on selection/hover state
       const isSelected = selectedIds.has(point.id);
-      const isHovered = hoveredId === point.id;
-      const scale = isHovered ? 1.5 : isSelected ? 1.3 : 1.0;
-      tempObject.scale.setScalar(scale);
+      tempObject.scale.setScalar(isSelected ? 1.3 : 1.0);
 
       tempObject.updateMatrix();
       meshRef.current!.setMatrixAt(i, tempObject.matrix);
 
-      // Color
       const baseColor = getPointColor(point, colorBy);
       if (isSelected) {
-        tempColor.setRGB(1, 1, 1); // White for selected
-      } else if (isHovered) {
-        tempColor.copy(baseColor).multiplyScalar(1.5);
+        tempColor.setRGB(1, 1, 1);
       } else {
         tempColor.copy(baseColor);
       }
@@ -164,39 +223,92 @@ function InstancedPoints({
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
     }
-  }, [points, colorBy, selectedIds, hoveredId]);
-
-  // Raycasting for hover/click detection
-  useFrame(() => {
-    if (!meshRef.current) return;
-
-    raycaster.setFromCamera(pointer, camera);
-    const intersects = raycaster.intersectObject(meshRef.current);
-
-    if (intersects.length > 0) {
-      const instanceId = intersects[0]?.instanceId;
-      if (instanceId !== undefined && points[instanceId]) {
-        setHoveredId(points[instanceId].id);
-      }
-    } else {
-      setHoveredId(null);
+    if (lastHoverIndexRef.current !== null) {
+      applyVisuals(lastHoverIndexRef.current);
     }
-  });
+    if (focusedIndexRef.current !== null) {
+      applyVisuals(focusedIndexRef.current);
+    }
+  }, [points, colorBy, selectedIds, applyVisuals]);
 
-  const handleClick = React.useCallback(() => {
-    if (hoveredId) {
-      const point = points.find((p) => p.id === hoveredId);
+  const handlePointerMove = React.useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (!meshRef.current) return;
+      const instanceId = event.instanceId;
+      if (instanceId === undefined) {
+        if (lastHoverIndexRef.current !== null) {
+          const previousHover = lastHoverIndexRef.current;
+          lastHoverIndexRef.current = null;
+          applyVisuals(previousHover);
+        }
+        setHoveredId(null);
+        return;
+      }
+
+      if (instanceId === lastHoverIndexRef.current) return;
+
+      const previousHover = lastHoverIndexRef.current;
+      lastHoverIndexRef.current = instanceId;
+      if (previousHover !== null) {
+        applyVisuals(previousHover);
+      }
+      const point = points[instanceId];
+      if (!point) return;
+      applyVisuals(instanceId);
+      setHoveredId(point.id);
+    },
+    [points, applyVisuals, setHoveredId]
+  );
+
+  const handlePointerOut = React.useCallback(() => {
+    if (lastHoverIndexRef.current !== null) {
+      const previousHover = lastHoverIndexRef.current;
+      lastHoverIndexRef.current = null;
+      applyVisuals(previousHover);
+    }
+    setHoveredId(null);
+  }, [applyVisuals, setHoveredId]);
+
+  React.useEffect(() => {
+    if (!focusedId) {
+      if (focusedIndexRef.current !== null) {
+        const previousIndex = focusedIndexRef.current;
+        focusedIndexRef.current = null;
+        applyVisuals(previousIndex);
+      }
+      return;
+    }
+
+    const nextIndex = indexById.get(focusedId) ?? null;
+    if (nextIndex === focusedIndexRef.current) return;
+    if (focusedIndexRef.current !== null) {
+      applyVisuals(focusedIndexRef.current);
+    }
+    focusedIndexRef.current = nextIndex;
+    if (nextIndex !== null) {
+      applyVisuals(nextIndex);
+    }
+  }, [focusedId, indexById, applyVisuals]);
+
+  const handleClick = React.useCallback(
+    (event: ThreeEvent<MouseEvent>) => {
+      const instanceId = event.instanceId;
+      if (instanceId === undefined) return;
+      const point = points[instanceId];
       if (point) {
         onPointClick(point);
       }
-    }
-  }, [hoveredId, points, onPointClick]);
+    },
+    [points, onPointClick]
+  );
 
   return (
     <instancedMesh
       ref={meshRef}
       args={[undefined, undefined, points.length]}
       onClick={handleClick}
+      onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
     >
       <sphereGeometry args={[0.05, 16, 16]} />
       <meshStandardMaterial vertexColors />
@@ -245,8 +357,7 @@ function SelectionBox({ onSelect }: SelectionBoxProps) {
   React.useEffect(() => {
     const canvas = gl.domElement;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleMouseDown = (e: any) => {
+    const handleMouseDown = (e: MouseEvent) => {
       if (e.shiftKey) {
         setIsSelecting(true);
         const rect = canvas.getBoundingClientRect();
@@ -257,8 +368,7 @@ function SelectionBox({ onSelect }: SelectionBoxProps) {
       }
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleMouseUp = (e: any) => {
+    const handleMouseUp = (e: MouseEvent) => {
       if (isSelecting && startPoint) {
         const rect = canvas.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -284,6 +394,89 @@ function SelectionBox({ onSelect }: SelectionBoxProps) {
   }, [camera, gl, isSelecting, startPoint, onSelect]);
 
   return null;
+}
+
+interface EmbeddingA11yRegistryProps {
+  points: EmbeddingPoint[];
+  onFocusIdChange: (id: string | null) => void;
+  onActivate: (point: EmbeddingPoint) => void;
+}
+
+function EmbeddingA11yRegistry({
+  points,
+  onFocusIdChange,
+  onActivate,
+}: EmbeddingA11yRegistryProps) {
+  const {
+    registerInteractiveObject,
+    unregisterInteractiveObject,
+    focusedObjectId,
+    announce,
+    setFocusedObjectId,
+  } = useA11y();
+
+  const limitedPoints = React.useMemo(
+    () => points.slice(0, MAX_A11Y_POINTS),
+    [points]
+  );
+  const pointById = React.useMemo(
+    () => new Map(limitedPoints.map((point) => [point.id, point])),
+    [limitedPoints]
+  );
+  const indexById = React.useMemo(
+    () => new Map(limitedPoints.map((point, index) => [point.id, index])),
+    [limitedPoints]
+  );
+
+  React.useEffect(() => {
+    limitedPoints.forEach((point) => registerInteractiveObject(point.id));
+    return () => {
+      limitedPoints.forEach((point) => unregisterInteractiveObject(point.id));
+    };
+  }, [limitedPoints, registerInteractiveObject, unregisterInteractiveObject]);
+
+  React.useEffect(() => {
+    if (!focusedObjectId) {
+      onFocusIdChange(null);
+      return;
+    }
+    const point = pointById.get(focusedObjectId);
+    if (!point) {
+      onFocusIdChange(null);
+      if (limitedPoints[0]) {
+        setFocusedObjectId(limitedPoints[0].id);
+      }
+      return;
+    }
+
+    onFocusIdChange(point.id);
+    const index = (indexById.get(point.id) ?? 0) + 1;
+    announce(
+      `Focused point ${index} of ${limitedPoints.length}. Confidence ${(
+        point.confidence * 100
+      ).toFixed(1)} percent. Agreement ${(point.agreement * 100).toFixed(1)} percent.`
+    );
+  }, [
+    focusedObjectId,
+    pointById,
+    indexById,
+    limitedPoints,
+    announce,
+    onFocusIdChange,
+    setFocusedObjectId,
+  ]);
+
+  const handleActivate = React.useCallback(
+    (id: string) => {
+      const point = pointById.get(id);
+      if (point) {
+        onActivate(point);
+      }
+    },
+    [pointById, onActivate]
+  );
+
+  return <KeyboardControls onActivate={handleActivate} />;
 }
 
 // Legend component
@@ -375,8 +568,8 @@ function Stats({ pointCount, selectedCount }: StatsProps) {
 function EmptyState() {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-4">📊</div>
+      <div className="text-center flex flex-col items-center">
+        <BarChart2 className="w-12 h-12 mb-4 text-muted-foreground" />
         <h3 className="text-lg font-medium mb-2">No Embeddings Yet</h3>
         <p className="text-sm text-muted-foreground max-w-[300px]">
           Start annotating tasks to populate the embedding space visualization.
@@ -398,10 +591,21 @@ function LoadingState() {
   );
 }
 
+function createSeededRandom(seed: number) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // Generate mock embeddings for demo
 function generateMockEmbeddings(count: number): EmbeddingPoint[] {
   const points: EmbeddingPoint[] = [];
   const types: EmbeddingPoint['taskType'][] = ['chosen', 'rejected', 'tie'];
+  const rng = createSeededRandom(42);
 
   // Generate clusters
   const clusterCenters = [
@@ -419,14 +623,14 @@ function generateMockEmbeddings(count: number): EmbeddingPoint[] {
     points.push({
       id: `point-${i}`,
       position: [
-        (cluster?.[0] ?? 0) + (Math.random() - 0.5) * spread,
-        (cluster?.[1] ?? 0) + (Math.random() - 0.5) * spread,
-        (cluster?.[2] ?? 0) + (Math.random() - 0.5) * spread,
+        (cluster?.[0] ?? 0) + (rng() - 0.5) * spread,
+        (cluster?.[1] ?? 0) + (rng() - 0.5) * spread,
+        (cluster?.[2] ?? 0) + (rng() - 0.5) * spread,
       ],
-      confidence: Math.random(),
-      agreement: Math.random(),
-      recency: Math.random(),
-      taskType: (types[Math.floor(Math.random() * types.length)] ?? 'chosen'),
+      confidence: rng(),
+      agreement: rng(),
+      recency: rng(),
+      taskType: (types[Math.floor(rng() * types.length)] ?? 'chosen'),
       taskId: `task-${i}`,
       prompt: `Sample prompt for task ${i}: How would you rate this response?`,
     });
@@ -441,24 +645,15 @@ export function EmbeddingSpace({
   onSelectionChange,
   maxPoints = 10000,
   colorBy = 'taskType',
+  height = 'h-80 sm:h-96 md:h-[500px] lg:h-[600px]',
 }: EmbeddingSpaceProps) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
-  const [hoveredPoint, setHoveredPoint] = React.useState<EmbeddingPoint | null>(null);
+  const [a11yFocusId, setA11yFocusId] = React.useState<string | null>(null);
 
   // Reusable vectors to avoid garbage creation
   const tempVectorRef = React.useRef(new THREE.Vector3());
   const hoveredPositionRef = React.useRef(new THREE.Vector3());
-
-  // Calculate hovered position without creating garbage (move hook before early returns)
-  const hoveredPosition = React.useMemo(() => {
-    if (!hoveredPoint) return null;
-    return hoveredPositionRef.current.set(
-      hoveredPoint.position[0],
-      hoveredPoint.position[1],
-      hoveredPoint.position[2]
-    );
-  }, [hoveredPoint]);
 
   // Fetch embeddings
   const { data: points, isLoading, error } = useQuery({
@@ -474,15 +669,25 @@ export function EmbeddingSpace({
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Update hovered point
-  React.useEffect(() => {
-    if (hoveredId && points) {
-      const point = points.find((p) => p.id === hoveredId);
-      setHoveredPoint(point || null);
-    } else {
-      setHoveredPoint(null);
-    }
-  }, [hoveredId, points]);
+  const pointById = React.useMemo(
+    () => new Map((points || []).map((point) => [point.id, point])),
+    [points]
+  );
+
+  const hoveredPoint = React.useMemo(() => {
+    if (!hoveredId) return null;
+    return pointById.get(hoveredId) ?? null;
+  }, [hoveredId, pointById]);
+
+  // Calculate hovered position without creating garbage
+  const hoveredPosition = React.useMemo(() => {
+    if (!hoveredPoint) return null;
+    return hoveredPositionRef.current.set(
+      hoveredPoint.position[0],
+      hoveredPoint.position[1],
+      hoveredPoint.position[2]
+    );
+  }, [hoveredPoint]);
 
   // Handle point click
   const handlePointClick = React.useCallback(
@@ -528,7 +733,7 @@ export function EmbeddingSpace({
 
   if (isLoading) {
     return (
-      <div className="relative w-full h-[600px] bg-muted/20 rounded-lg overflow-hidden">
+      <div className={`relative w-full ${height} bg-muted/20 rounded-lg overflow-hidden`}>
         <LoadingState />
       </div>
     );
@@ -536,55 +741,96 @@ export function EmbeddingSpace({
 
   if (error || !points || points.length === 0) {
     return (
-      <div className="relative w-full h-[600px] bg-muted/20 rounded-lg overflow-hidden">
+      <div className={`relative w-full ${height} bg-muted/20 rounded-lg overflow-hidden`}>
         <EmptyState />
       </div>
     );
   }
 
+  if (!isWebGLSupported()) {
+    return (
+      <div className={`relative w-full ${height} bg-muted/20 rounded-lg overflow-hidden`}>
+        <SceneFallback
+          description={`Embedding space visualization showing ${points.length} data points.`}
+          dataTable={
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: 6, borderBottom: '1px solid #333' }}>
+                    ID
+                  </th>
+                  <th style={{ textAlign: 'left', padding: 6, borderBottom: '1px solid #333' }}>
+                    Confidence
+                  </th>
+                  <th style={{ textAlign: 'left', padding: 6, borderBottom: '1px solid #333' }}>
+                    Type
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {points.slice(0, 10).map((point) => (
+                  <tr key={point.id}>
+                    <td style={{ padding: 6 }}>{point.id.slice(0, 8)}</td>
+                    <td style={{ padding: 6 }}>{(point.confidence * 100).toFixed(1)}%</td>
+                    <td style={{ padding: 6 }}>{point.taskType}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          }
+        />
+      </div>
+    );
+  }
+
+  const a11yPointCount = Math.min(points.length, MAX_A11Y_POINTS);
+  const sceneDescription = `Embedding space visualization showing ${points.length} data points. ${a11yPointCount} points are available for keyboard navigation.`;
 
   return (
-    <div
-      className="relative w-full h-[600px] bg-muted/20 rounded-lg overflow-hidden"
-      role="application"
-      aria-label={`3D embedding space visualization showing ${points?.length || 0} data points. Use mouse to rotate, scroll to zoom, shift+drag to select.`}
-    >
-      <Canvas
-        aria-hidden="true"
-        tabIndex={-1}
-      >
-        <PerspectiveCamera makeDefault position={[5, 5, 5]} fov={50} />
-        <OrbitControls
-          enablePan
-          enableZoom
-          enableRotate
-          dampingFactor={0.05}
-          rotateSpeed={0.5}
-        />
+    <div className={`relative w-full ${height} bg-muted/20 rounded-lg overflow-hidden`}>
+      <A11yProvider>
+        <Canvas>
+          <A11yCanvas sceneDescription={sceneDescription}>
+            <PerspectiveCamera makeDefault position={[5, 5, 5]} fov={50} />
+            <OrbitControls
+              enablePan
+              enableZoom
+              enableRotate
+              dampingFactor={0.05}
+              rotateSpeed={0.5}
+            />
 
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
+            <ambientLight intensity={0.5} />
+            <directionalLight position={[10, 10, 5]} intensity={1} />
 
-        <Bounds fit clip observe margin={1.2}>
-          <InstancedPoints
-            points={points}
-            colorBy={colorBy}
-            selectedIds={selectedIds}
-            onPointClick={handlePointClick}
-            hoveredId={hoveredId}
-            setHoveredId={setHoveredId}
-          />
-        </Bounds>
+            <Bounds fit clip observe margin={1.2}>
+              <InstancedPoints
+                points={points}
+                colorBy={colorBy}
+                selectedIds={selectedIds}
+                onPointClick={handlePointClick}
+                setHoveredId={setHoveredId}
+                focusedId={a11yFocusId}
+              />
+            </Bounds>
 
-        <SelectionBox onSelect={handleBoxSelect} />
-        <Tooltip point={hoveredPoint} position={hoveredPosition} />
+            <SelectionBox onSelect={handleBoxSelect} />
+            <Tooltip point={hoveredPoint} position={hoveredPosition} />
 
-        {/* Grid helper */}
-        <gridHelper args={[10, 10, 0x444444, 0x222222]} />
+            <EmbeddingA11yRegistry
+              points={points}
+              onFocusIdChange={setA11yFocusId}
+              onActivate={handlePointClick}
+            />
 
-        {/* Axes helper */}
-        <axesHelper args={[2]} />
-      </Canvas>
+            {/* Grid helper */}
+            <gridHelper args={[10, 10, 0x444444, 0x222222]} />
+
+            {/* Axes helper */}
+            <axesHelper args={[2]} />
+          </A11yCanvas>
+        </Canvas>
+      </A11yProvider>
 
       <Legend colorBy={colorBy} />
       <Stats pointCount={points.length} selectedCount={selectedIds.size} />
@@ -601,8 +847,10 @@ export function EmbeddingSpace({
         )}
         <div className="bg-background/80 backdrop-blur-sm rounded-lg border px-3 py-1.5 text-xs text-muted-foreground">
           <div>Shift+Drag: Box Select</div>
-          <div>Click: Toggle Select</div>
-          <div>Scroll: Zoom</div>
+          <div>Click/Enter: Toggle Select</div>
+          <div>Tab: Focus Points (first {a11yPointCount})</div>
+          <div>Arrow Keys: Rotate</div>
+          <div>Scroll/+/-: Zoom</div>
         </div>
       </div>
     </div>

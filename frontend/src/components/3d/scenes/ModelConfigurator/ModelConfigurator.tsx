@@ -6,14 +6,20 @@
  */
 
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Environment, Html, GradientTexture, MeshDistortMaterial } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Environment, Html, MeshDistortMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 
 import { getCanvasPropsForPreset, isWebGLSupported } from '@/lib/three/canvas-config';
 import { usePerformanceMonitor } from '@/lib/three/performance-monitor';
-import { useLerp, useSpring } from '@/lib/three/animations';
-import { A11yProvider, A11yCanvas, SceneFallback } from '@/lib/three/a11y/A11yScene';
+import { useLerp } from '@/lib/three/animations';
+import {
+  A11yProvider,
+  A11yCanvas,
+  KeyboardControls,
+  SceneFallback,
+  useA11y,
+} from '@/lib/three/a11y/A11yScene';
 
 // ============================================================================
 // Types
@@ -57,6 +63,7 @@ interface AccuracyPreviewProps {
 function AccuracyPreview({ accuracy, targetAccuracy }: AccuracyPreviewProps): React.ReactElement {
   const meshRef = useRef<THREE.Mesh>(null);
   const { value: animatedAccuracy } = useLerp({ target: accuracy, factor: 0.05 });
+  const { prefersReducedMotion } = useA11y();
 
   // Color based on accuracy
   const color = useMemo(() => {
@@ -72,6 +79,7 @@ function AccuracyPreview({ accuracy, targetAccuracy }: AccuracyPreviewProps): Re
   }, [animatedAccuracy]);
 
   useFrame((state) => {
+    if (prefersReducedMotion) return;
     if (meshRef.current) {
       meshRef.current.rotation.y = state.clock.elapsedTime * 0.2;
     }
@@ -84,8 +92,8 @@ function AccuracyPreview({ accuracy, targetAccuracy }: AccuracyPreviewProps): Re
         <sphereGeometry args={[1, 64, 64]} />
         <MeshDistortMaterial
           color={color}
-          distort={0.3}
-          speed={2}
+          distort={prefersReducedMotion ? 0 : 0.3}
+          speed={prefersReducedMotion ? 0 : 2}
           roughness={0.2}
           metalness={0.8}
         />
@@ -136,7 +144,7 @@ function ParameterRing({
   parameter,
   angle,
   radius,
-  onValueChange,
+  onValueChange: _onValueChange,
   isActive,
   onActivate,
 }: ParameterRingProps): React.ReactElement {
@@ -476,6 +484,7 @@ export function ModelConfigurator({
       >
         <A11yProvider>
           <A11yCanvas sceneDescription="Interactive model parameter configurator with accuracy preview">
+            <KeyboardControls />
             <SceneContent
               parameters={parameters}
               onParameterChange={handleParameterChange}

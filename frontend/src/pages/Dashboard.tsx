@@ -14,6 +14,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { healthApi, monitoringApi } from '@/lib/api-client';
+import { mockAlerts, mockHealth } from '@/lib/mock-data';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -38,20 +40,25 @@ export default function DashboardPage() {
     queryKey: ['health'],
     queryFn: async () => {
       const result = await healthApi.check();
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
   const {
     data: alertsData,
     isLoading: alertsLoading,
+    error: alertsError,
   } = useQuery({
     queryKey: ['alerts'],
     queryFn: async () => {
       const result = await monitoringApi.getAlerts();
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
     refetchInterval: 30000,
@@ -73,16 +80,23 @@ export default function DashboardPage() {
     );
   };
 
-  const services = healthData
+  const resolvedHealth = healthData ?? (healthError ? mockHealth : undefined);
+  const resolvedAlerts = alertsData ?? (alertsError ? mockAlerts : undefined);
+  const isHealthMock = !!healthError && !healthData;
+  const isAlertsMock = !!alertsError && !alertsData;
+  const showHealthError = !!healthError && !isHealthMock;
+  const showAlertsError = !!alertsError && !isAlertsMock;
+
+  const services = resolvedHealth
     ? [
-        { name: 'Encoder', status: healthData.encoder },
-        { name: 'DPO Pipeline', status: healthData.dpo },
-        { name: 'Monitoring', status: healthData.monitoring },
-        { name: 'Privacy Engine', status: healthData.privacy },
+        { name: 'Encoder', status: resolvedHealth.encoder },
+        { name: 'DPO Pipeline', status: resolvedHealth.dpo },
+        { name: 'Monitoring', status: resolvedHealth.monitoring },
+        { name: 'Privacy Engine', status: resolvedHealth.privacy },
       ]
     : [];
 
-  const firingAlerts = alertsData?.filter((a) => a.status === 'firing') || [];
+  const firingAlerts = resolvedAlerts?.filter((a) => a.status === 'firing') || [];
 
   return (
     <div className="space-y-6">
@@ -91,7 +105,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
-            System overview and health status
+            Open Human Preference Modeling control center
           </p>
         </div>
         <Button
@@ -135,12 +149,35 @@ export default function DashboardPage() {
       </div>
 
       {/* Error display */}
-      {healthError && (
+      {showHealthError && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Error loading health status</AlertTitle>
           <AlertDescription>
-            {healthError instanceof Error ? healthError.message : 'Failed to connect to server'}
+            {extractErrorMessage(healthError, 'Failed to connect to server')}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {showAlertsError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error loading alerts</AlertTitle>
+          <AlertDescription>
+            {extractErrorMessage(alertsError, 'Failed to load alert data')}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {(isHealthMock || isAlertsMock) && (
+        <Alert variant="warning">
+          <AlertTitle>Using mock data</AlertTitle>
+          <AlertDescription>
+            {isHealthMock && isAlertsMock
+              ? 'Health and alert data could not be loaded. Showing mock data.'
+              : isHealthMock
+                ? 'Health data could not be loaded. Showing mock data.'
+                : 'Alert data could not be loaded. Showing mock data.'}
           </AlertDescription>
         </Alert>
       )}
@@ -195,9 +232,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <Badge
-                    variant={
-                      alert.severity === 'critical' ? 'destructive' : 'warning'
-                    }
+                    variant={alert.severity === 'critical' ? 'destructive' : 'warning'}
                   >
                     {alert.severity}
                   </Badge>
@@ -253,12 +288,12 @@ export default function DashboardPage() {
 
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+        <Card>
               <CardHeader>
                 <CardTitle>System Health</CardTitle>
                 <CardDescription>Current status of all services</CardDescription>
-              </CardHeader>
-              <CardContent>
+          </CardHeader>
+          <CardContent>
                 <div className="space-y-3">
                   {services.map((service) => (
                     <div
@@ -272,16 +307,16 @@ export default function DashboardPage() {
                       {getStatusBadge(service.status)}
                     </div>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
+            </div>
+          </CardContent>
+        </Card>
 
-            <Card>
+        <Card>
               <CardHeader>
                 <CardTitle>Quick Actions</CardTitle>
                 <CardDescription>Common tasks and shortcuts</CardDescription>
-              </CardHeader>
-              <CardContent>
+          </CardHeader>
+          <CardContent>
                 <div className="grid gap-2">
                   <Button variant="outline" className="justify-start" asChild>
                     <a href="/annotations">Start Annotating</a>
@@ -295,19 +330,19 @@ export default function DashboardPage() {
                   <Button variant="outline" className="justify-start" asChild>
                     <a href="/training">Monitor Training</a>
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+            </div>
+          </CardContent>
+        </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="performance" className="space-y-4">
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle>Performance Metrics</CardTitle>
               <CardDescription>Key performance indicators</CardDescription>
-            </CardHeader>
-            <CardContent>
+          </CardHeader>
+          <CardContent>
               <div className="grid gap-4 md:grid-cols-4">
                 <StatCard
                   title="Avg Response Time"
@@ -334,8 +369,8 @@ export default function DashboardPage() {
                   change={{ value: 8.3, label: 'vs yesterday' }}
                 />
               </div>
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-4">
@@ -365,7 +400,7 @@ export default function DashboardPage() {
                     </Badge>
                   </div>
                 ))}
-              </div>
+      </div>
             </CardContent>
           </Card>
         </TabsContent>

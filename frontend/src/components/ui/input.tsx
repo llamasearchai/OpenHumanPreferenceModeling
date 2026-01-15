@@ -53,7 +53,12 @@ export interface InputProps
   /** Show clear button for text inputs */
   clearable?: boolean;
   /** Callback when clear button clicked */
+  /** Callback when clear button clicked */
   onClear?: () => void;
+  /** Controlled password visibility state */
+  showPassword?: boolean;
+  /** Callback for toggling password visibility */
+  onTogglePassword?: (show: boolean) => void;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -70,6 +75,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       rightElement,
       clearable,
       onClear,
+      showPassword,
+      onTogglePassword,
       id,
       disabled,
       value,
@@ -77,8 +84,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    const [showPassword, setShowPassword] = React.useState(false);
-    const inputId = id || React.useId();
+    const [internalShowPassword, setInternalShowPassword] = React.useState(false);
+    const generatedId = React.useId();
+    const inputId = id || generatedId;
     const errorId = `${inputId}-error`;
     const helperId = `${inputId}-helper`;
 
@@ -86,8 +94,22 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const isSearch = type === 'search';
     const hasValue = value !== undefined && value !== '';
 
+    // Determine if we are keeping track of password visibility internally or externally
+    const isControlled = showPassword !== undefined;
+    const currentShowPassword = isControlled ? showPassword : internalShowPassword;
+
+    const togglePassword = () => {
+      const newState = !currentShowPassword;
+      if (onTogglePassword) {
+        onTogglePassword(newState);
+      }
+      if (!isControlled) {
+        setInternalShowPassword(newState);
+      }
+    };
+
     const computedVariant = error ? 'error' : variant;
-    const computedType = isPassword && showPassword ? 'text' : type;
+    const computedType = isPassword && currentShowPassword ? 'text' : type;
 
     return (
       <div className="w-full space-y-1.5">
@@ -143,11 +165,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {isPassword && (
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={togglePassword}
                 className="text-muted-foreground hover:text-foreground"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={currentShowPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? (
+                {currentShowPassword ? (
                   <EyeOff className="h-4 w-4" />
                 ) : (
                   <Eye className="h-4 w-4" />

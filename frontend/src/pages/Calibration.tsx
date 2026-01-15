@@ -8,6 +8,7 @@ import * as React from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { calibrationApi } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -47,7 +48,9 @@ export default function CalibrationPage() {
         target_ece: targetEce[0] ?? 0.08,
         max_iterations: maxIterations[0] ?? 100,
       });
-      if (!response.success) throw new Error(response.error.detail);
+      if (!response.success) {
+        throw ApiRequestError.fromResponse(response);
+      }
       return response.data;
     },
     onSuccess: (data) => {
@@ -61,7 +64,7 @@ export default function CalibrationPage() {
     onError: (error) => {
       toast({
         title: 'Recalibration failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: extractErrorMessage(error),
         variant: 'destructive',
       });
     },
@@ -80,8 +83,8 @@ export default function CalibrationPage() {
     recalibrateMutation.mutate();
   };
 
-  const eceImprovement = result
-    ? ((result.pre_ece - result.post_ece) / result.pre_ece * 100)
+  const eceImprovement = result && result.pre_ece > 0
+    ? ((result.pre_ece - result.post_ece) / result.pre_ece) * 100
     : 0;
 
   return (
@@ -121,7 +124,6 @@ export default function CalibrationPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <Input
                 label="Validation Data URI"
-                placeholder="s3://bucket/validation_data.npz"
                 value={validationUri}
                 onChange={(e) => setValidationUri(e.target.value)}
                 helperText="S3 or local path to validation dataset"

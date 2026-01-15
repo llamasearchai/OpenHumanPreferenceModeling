@@ -5,8 +5,10 @@
  * before and after temperature scaling calibration.
  */
 
+import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useChartDimensions } from '@/lib/visualizations/use-chart-dimensions';
 
 // Types
 interface ConfidenceDistribution {
@@ -39,11 +41,14 @@ function generateMockDistribution(): ConfidenceDistribution[] {
     // Post-calibration: more spread out (better calibrated)
     const postDist = Math.exp(-((midpoint - 0.7) ** 2) / 0.1);
 
+    const preCount = Math.round(preDist * 1000 + (i % 4) * 12);
+    const postCount = Math.round(postDist * 800 + (i % 5) * 10);
+
     bins.push({
       binStart,
       binEnd,
-      preCount: Math.floor(preDist * 1000 + Math.random() * 50),
-      postCount: Math.floor(postDist * 800 + Math.random() * 50),
+      preCount,
+      postCount,
     });
   }
 
@@ -54,6 +59,36 @@ export function ConfidenceHistogram({
   height = 200,
   showOverlay = true,
 }: ConfidenceHistogramProps) {
+  const patternBaseId = React.useId();
+  const safePatternId = patternBaseId.replace(/:/g, '');
+  const prePatternId = `${safePatternId}-pre`;
+  const postPatternId = `${safePatternId}-post`;
+
+  const preLegendStyle = {
+    backgroundImage:
+      'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0, rgba(255,255,255,0.7) 2px, transparent 2px, transparent 6px)',
+  };
+  const postLegendStyle = {
+    backgroundImage:
+      'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.7) 1.2px, transparent 1.2px)',
+    backgroundSize: '6px 6px',
+  };
+
+  const {
+    ref: chartRef,
+    width,
+    height: measuredHeight,
+    boundedWidth,
+    boundedHeight,
+    margins,
+    isReady,
+  } = useChartDimensions({
+    marginTop: 20,
+    marginRight: 20,
+    marginBottom: 40,
+    marginLeft: 50,
+  });
+
   // Fetch distribution data
   const { data: distribution, isLoading } = useQuery({
     queryKey: ['calibration', 'confidence-distribution'],
@@ -63,10 +98,8 @@ export function ConfidenceHistogram({
     },
   });
 
-  const padding = { top: 20, right: 20, bottom: 40, left: 50 };
-  const width = 500;
-  const innerWidth = width - padding.left - padding.right;
-  const innerHeight = height - padding.top - padding.bottom;
+  const innerWidth = boundedWidth;
+  const innerHeight = boundedHeight;
 
   if (isLoading) {
     return <Skeleton className="w-full" style={{ height }} />;
@@ -81,6 +114,10 @@ export function ConfidenceHistogram({
         No distribution data available
       </div>
     );
+  }
+
+  if (!isReady || width === 0 || measuredHeight === 0) {
+    return <Skeleton className="w-full" style={{ height }} />;
   }
 
   const maxCount = Math.max(
@@ -106,44 +143,70 @@ export function ConfidenceHistogram({
 
   return (
     <div className="space-y-4">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
-        style={{ maxHeight: height }}
-        role="img"
-        aria-label={`Confidence distribution histogram comparing pre-calibration (mean ${preMean}%) and post-calibration (mean ${postMean}%) prediction confidences across ${distribution.length} bins.`}
-      >
-        <title>Prediction Confidence Distribution</title>
-        <desc>
-          A histogram showing the distribution of prediction confidences before and after temperature scaling calibration.
-          Pre-calibration mean: {preMean}%. Post-calibration mean: {postMean}%.
-        </desc>
-        <g transform={`translate(${padding.left}, ${padding.top})`}>
-          {distribution.map((bin, i) => {
-            const preHeight = (bin.preCount / maxCount) * innerHeight;
-            const postHeight = (bin.postCount / maxCount) * innerHeight;
+      <div ref={chartRef} className="w-full" style={{ height }}>
+        <svg
+          viewBox={`0 0 ${width} ${measuredHeight}`}
+          className="w-full"
+          style={{ maxHeight: height }}
+          role="img"
+          aria-label={`Confidence distribution histogram comparing pre-calibration (mean ${preMean}%) and post-calibration (mean ${postMean}%) prediction confidences across ${distribution.length} bins.`}
+        >
+          <title>Prediction Confidence Distribution</title>
+          <desc>
+            A histogram showing the distribution of prediction confidences before and after temperature scaling calibration.
+            Pre-calibration mean: {preMean}%. Post-calibration mean: {postMean}%.
+          </desc>
+          <defs>
+            <pattern
+              id={prePatternId}
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              className="text-primary"
+            >
+              <rect width="6" height="6" fill="currentColor" opacity="0.2" />
+              <path d="M0 6 L6 0" stroke="currentColor" strokeWidth="1" />
+            </pattern>
+            <pattern
+              id={postPatternId}
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              className="text-green-500"
+            >
+              <rect width="6" height="6" fill="currentColor" opacity="0.2" />
+              <circle cx="3" cy="3" r="1.2" fill="currentColor" />
+            </pattern>
+          </defs>
+          <g transform={`translate(${margins.left}, ${margins.top})`}>
+            {distribution.map((bin, i) => {
+              const preHeight = (bin.preCount / maxCount) * innerHeight;
+              const postHeight = (bin.postCount / maxCount) * innerHeight;
 
-            if (showOverlay) {
-              // Overlapping bars
-              return (
-                <g key={i}>
-                  <rect
-                    x={i * binWidth + 1}
-                    y={innerHeight - preHeight}
-                    width={barWidth}
-                    height={preHeight}
-                    className="fill-primary/50"
-                  />
-                  <rect
-                    x={i * binWidth + 1}
-                    y={innerHeight - postHeight}
-                    width={barWidth}
-                    height={postHeight}
-                    className="fill-green-500/70"
-                  />
-                </g>
-              );
-            } else {
+              if (showOverlay) {
+                // Overlapping bars
+                return (
+                  <g key={i}>
+                    <rect
+                      x={i * binWidth + 1}
+                      y={innerHeight - preHeight}
+                      width={barWidth}
+                      height={preHeight}
+                      fill={`url(#${prePatternId})`}
+                      opacity={0.6}
+                    />
+                    <rect
+                      x={i * binWidth + 1}
+                      y={innerHeight - postHeight}
+                      width={barWidth}
+                      height={postHeight}
+                      fill={`url(#${postPatternId})`}
+                      opacity={0.8}
+                    />
+                  </g>
+                );
+              }
+
               // Side-by-side bars
               return (
                 <g key={i}>
@@ -152,19 +215,18 @@ export function ConfidenceHistogram({
                     y={innerHeight - preHeight}
                     width={barWidth}
                     height={preHeight}
-                    className="fill-primary"
+                    fill={`url(#${prePatternId})`}
                   />
                   <rect
                     x={i * binWidth + barWidth + 2}
                     y={innerHeight - postHeight}
                     width={barWidth}
                     height={postHeight}
-                    className="fill-green-500"
+                    fill={`url(#${postPatternId})`}
                   />
                 </g>
               );
-            }
-          })}
+            })}
 
           {/* X-axis */}
           <line
@@ -215,16 +277,25 @@ export function ConfidenceHistogram({
           </text>
         </g>
       </svg>
+      </div>
 
       {/* Legend */}
       <div className="flex items-center justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
-          <div className={`w-4 h-4 rounded ${showOverlay ? 'bg-primary/50' : 'bg-primary'}`} />
-          <span className="text-muted-foreground">Pre-calibration</span>
+          <div
+            className={`w-4 h-4 rounded ${showOverlay ? 'bg-primary/50' : 'bg-primary'}`}
+            style={{ ...preLegendStyle, opacity: showOverlay ? 0.6 : 1 }}
+            aria-hidden="true"
+          />
+          <span className="text-muted-foreground">Pre-calibration (striped)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-4 h-4 rounded ${showOverlay ? 'bg-green-500/70' : 'bg-green-500'}`} />
-          <span className="text-muted-foreground">Post-calibration</span>
+          <div
+            className={`w-4 h-4 rounded ${showOverlay ? 'bg-green-500/70' : 'bg-green-500'}`}
+            style={{ ...postLegendStyle, opacity: showOverlay ? 0.8 : 1 }}
+            aria-hidden="true"
+          />
+          <span className="text-muted-foreground">Post-calibration (dotted)</span>
         </div>
       </div>
 
@@ -239,6 +310,43 @@ export function ConfidenceHistogram({
           <div className="font-mono font-medium">{postMean}%</div>
         </div>
       </div>
+
+      <details className="rounded-lg border bg-background/60 p-3">
+        <summary className="cursor-pointer text-sm font-medium">View data table</summary>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <caption className="sr-only">Confidence distribution data by bin</caption>
+            <thead>
+              <tr className="text-left text-muted-foreground border-b">
+                <th scope="col" className="py-1 pr-2">
+                  Bin range
+                </th>
+                <th scope="col" className="py-1 pr-2 text-right">
+                  Pre count
+                </th>
+                <th scope="col" className="py-1 pr-2 text-right">
+                  Post count
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {distribution.map((bin) => (
+                <tr key={`${bin.binStart}-${bin.binEnd}`} className="border-b last:border-b-0">
+                  <td className="py-1 pr-2 font-mono">
+                    {(bin.binStart * 100).toFixed(0)}% - {(bin.binEnd * 100).toFixed(0)}%
+                  </td>
+                  <td className="py-1 pr-2 text-right font-mono">
+                    {bin.preCount.toLocaleString()}
+                  </td>
+                  <td className="py-1 pr-2 text-right font-mono">
+                    {bin.postCount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }

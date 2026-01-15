@@ -33,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -93,69 +94,95 @@ interface AgreementPair {
   taskCount: number;
 }
 
-// Mock API functions
+const baseTime = new Date('2026-01-10T12:00:00.000Z');
+
+function minutesAgo(minutes: number) {
+  return new Date(baseTime.getTime() - minutes * 60 * 1000).toISOString();
+}
+
+const mockAnnotators: AnnotatorMetrics[] = Array.from({ length: 15 }, (_, i) => {
+  const idx = i + 1;
+  const status: AnnotatorMetrics['status'] =
+    idx > 13 ? 'suspended' : idx > 11 ? 'probation' : 'active';
+  const trend: AnnotatorMetrics['trend'] = idx % 3 === 0 ? 'down' : idx % 2 === 0 ? 'up' : 'stable';
+  const flags = status === 'suspended' ? ['low_agreement', 'too_fast'] : status === 'probation' ? ['low_agreement'] : [];
+
+  return {
+    id: `annotator-${idx}`,
+    name: `Annotator ${idx}`,
+    email: `annotator${idx}@ohpm.local`,
+    totalAnnotations: 180 + idx * 24,
+    agreementScore: Number((0.68 + idx * 0.015).toFixed(3)),
+    goldPassRate: Number((0.78 + idx * 0.01).toFixed(3)),
+    avgTimePerTask: Number((18 + idx * 0.9).toFixed(1)),
+    status,
+    flags,
+    trend,
+    lastActive: minutesAgo(idx * 37),
+  };
+}).sort((a, b) => b.agreementScore - a.agreementScore);
+
+const mockSpamFlags: SpamFlag[] = [
+  {
+    id: 'flag-1',
+    annotatorId: 'annotator-13',
+    annotatorName: 'Annotator 13',
+    flagType: 'low_agreement',
+    description: 'Agreement dropped below threshold for three consecutive shifts.',
+    evidence: [
+      'Agreement with gold: 52%',
+      'Two consecutive audit failures',
+      'High variance in pairwise ratings',
+    ],
+    createdAt: minutesAgo(210),
+    reviewed: false,
+  },
+  {
+    id: 'flag-2',
+    annotatorId: 'annotator-14',
+    annotatorName: 'Annotator 14',
+    flagType: 'too_fast',
+    description: 'Median task completion time is far below baseline.',
+    evidence: ['Median time: 3.2s', 'Baseline: 22.5s', 'Consistency score: 0.41'],
+    createdAt: minutesAgo(430),
+    reviewed: true,
+  },
+  {
+    id: 'flag-3',
+    annotatorId: 'annotator-12',
+    annotatorName: 'Annotator 12',
+    flagType: 'repetitive',
+    description: 'Repeatedly selects the same option across diverse tasks.',
+    evidence: ['92% identical choices', 'Response entropy: 0.08', 'Repeated rationale phrases'],
+    createdAt: minutesAgo(95),
+    reviewed: false,
+  },
+];
+
+const mockAgreementPairs: AgreementPair[] = Array.from({ length: 10 }, (_, i) => {
+  const pairs: AgreementPair[] = [];
+  for (let j = i + 1; j < 10; j++) {
+    const kappa = 0.35 + ((i + j) % 6) * 0.07;
+    pairs.push({
+      annotator1: `Annotator ${i + 1}`,
+      annotator2: `Annotator ${j + 1}`,
+      kappa: Number(kappa.toFixed(2)),
+      taskCount: 20 + ((i + j) % 5) * 8,
+    });
+  }
+  return pairs;
+}).flat();
+
 async function fetchAnnotators(): Promise<AnnotatorMetrics[]> {
-  return Array.from({ length: 15 }, (_, i) => ({
-    id: `annotator-${i}`,
-    name: `Annotator ${i + 1}`,
-    email: `annotator${i + 1}@example.com`,
-    totalAnnotations: Math.floor(Math.random() * 500) + 50,
-    agreementScore: 0.6 + Math.random() * 0.35,
-    goldPassRate: 0.7 + Math.random() * 0.25,
-    avgTimePerTask: 15 + Math.random() * 30,
-    status:
-      Math.random() > 0.9
-        ? 'suspended'
-        : Math.random() > 0.8
-          ? 'probation'
-          : 'active',
-    flags:
-      Math.random() > 0.8
-        ? ['low_agreement']
-        : Math.random() > 0.9
-          ? ['too_fast', 'repetitive']
-          : [],
-    trend: (Math.random() > 0.6 ? 'up' : Math.random() > 0.3 ? 'stable' : 'down') as AnnotatorMetrics['trend'],
-    lastActive: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(),
-  })).sort((a, b) => b.agreementScore - a.agreementScore) as AnnotatorMetrics[];
+  return mockAnnotators;
 }
 
 async function fetchSpamFlags(): Promise<SpamFlag[]> {
-  const flagTypes: SpamFlag['flagType'][] = [
-    'random_responding',
-    'too_fast',
-    'repetitive',
-    'low_agreement',
-  ];
-  return Array.from({ length: 8 }, (_, i) => ({
-    id: `flag-${i}`,
-    annotatorId: `annotator-${Math.floor(Math.random() * 15)}`,
-    annotatorName: `Annotator ${Math.floor(Math.random() * 15) + 1}`,
-    flagType: flagTypes[Math.floor(Math.random() * flagTypes.length)],
-    description: 'Detected suspicious annotation pattern',
-    evidence: [
-      `Task completion time: ${(Math.random() * 3 + 1).toFixed(1)}s (avg: 25s)`,
-      `Agreement with gold: ${(Math.random() * 30 + 40).toFixed(0)}%`,
-      `Consecutive identical responses: ${Math.floor(Math.random() * 10 + 5)}`,
-    ],
-    createdAt: new Date(Date.now() - Math.random() * 86400000 * 3).toISOString(),
-    reviewed: Math.random() > 0.6,
-  })) as SpamFlag[];
+  return mockSpamFlags;
 }
 
 async function fetchAgreementMatrix(): Promise<AgreementPair[]> {
-  const pairs: AgreementPair[] = [];
-  for (let i = 0; i < 10; i++) {
-    for (let j = i + 1; j < 10; j++) {
-      pairs.push({
-        annotator1: `Annotator ${i + 1}`,
-        annotator2: `Annotator ${j + 1}`,
-        kappa: Math.random() * 0.6 + 0.3,
-        taskCount: Math.floor(Math.random() * 50) + 10,
-      });
-    }
-  }
-  return pairs;
+  return mockAgreementPairs;
 }
 
 // Flag type display
@@ -427,6 +454,13 @@ export default function QualityControlPage() {
         </Button>
       </div>
 
+      <Alert variant="info">
+        <AlertTitle>Mock quality data</AlertTitle>
+        <AlertDescription>
+          Quality metrics are currently mocked to validate dashboards and charts.
+        </AlertDescription>
+      </Alert>
+
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -538,14 +572,14 @@ export default function QualityControlPage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search..."
+                      aria-label="Search annotators"
                       className="pl-9 w-[200px]"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[130px]">
+                    <SelectTrigger className="w-[130px]" aria-label="Status filter">
                       <Filter className="mr-2 h-4 w-4" />
                       <SelectValue />
                     </SelectTrigger>

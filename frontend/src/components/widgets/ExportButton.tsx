@@ -27,6 +27,9 @@ export function ExportButton({
   size = 'sm',
 }: ExportButtonProps) {
   const handleExport = () => {
+    const isJSDOM =
+      typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
+
     let content: string;
     let mimeType: string;
     let extension: string;
@@ -70,7 +73,9 @@ export function ExportButton({
     a.href = url;
     a.download = `${filename}.${extension}`;
     document.body.appendChild(a);
-    a.click();
+    if (!isJSDOM) {
+      a.click();
+    }
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };

@@ -82,6 +82,8 @@ interface GradientStats {
 }
 
 // Mock API functions
+const trainingBaseTime = new Date('2026-01-10T08:00:00.000Z');
+
 async function fetchRuns(): Promise<TrainingRun[]> {
   return [
     {
@@ -89,7 +91,7 @@ async function fetchRuns(): Promise<TrainingRun[]> {
       name: 'DPO Fine-tune v2.3',
       type: 'dpo',
       status: 'running',
-      startedAt: new Date(Date.now() - 3600000).toISOString(),
+      startedAt: new Date(trainingBaseTime.getTime() - 60 * 60 * 1000).toISOString(),
       completedAt: null,
       currentStep: 450,
       totalSteps: 1000,
@@ -105,8 +107,8 @@ async function fetchRuns(): Promise<TrainingRun[]> {
       name: 'SFT Baseline',
       type: 'sft',
       status: 'completed',
-      startedAt: new Date(Date.now() - 86400000).toISOString(),
-      completedAt: new Date(Date.now() - 82800000).toISOString(),
+      startedAt: new Date(trainingBaseTime.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+      completedAt: new Date(trainingBaseTime.getTime() - 23 * 60 * 60 * 1000).toISOString(),
       currentStep: 2000,
       totalSteps: 2000,
       config: {
@@ -122,9 +124,10 @@ async function fetchMetrics(_runId: string): Promise<TrainingMetrics[]> {
   const steps = 100;
   return Array.from({ length: steps }, (_, i) => {
     const step = i * 5;
-    const baseLoss = 2.5 * Math.exp(-step / 200) + 0.3 + (Math.random() - 0.5) * 0.1;
-    const chosenReward = -1 + step / 300 + (Math.random() - 0.5) * 0.2;
-    const rejectedReward = -2 + step / 500 + (Math.random() - 0.5) * 0.2;
+    const decay = Math.exp(-step / 220);
+    const baseLoss = 2.5 * decay + 0.3 + (i % 5) * 0.015;
+    const chosenReward = -1 + step / 320 + Math.sin(i / 6) * 0.08;
+    const rejectedReward = -2 + step / 520 + Math.cos(i / 7) * 0.06;
 
     return {
       step,
@@ -133,8 +136,8 @@ async function fetchMetrics(_runId: string): Promise<TrainingMetrics[]> {
       rejectedReward,
       rewardMargin: chosenReward - rejectedReward,
       learningRate: 5e-6 * (1 - step / 1000 / 2),
-      gradNorm: 0.5 + Math.random() * 0.5,
-      timestamp: new Date(Date.now() - (steps - i) * 60000).toISOString(),
+      gradNorm: 0.6 + Math.sin(i / 8) * 0.12,
+      timestamp: new Date(trainingBaseTime.getTime() - (steps - i) * 60000).toISOString(),
     };
   });
 }
@@ -148,11 +151,11 @@ async function fetchGradientStats(): Promise<GradientStats[]> {
     'layers.3',
     'lm_head',
   ];
-  return layers.map((name) => ({
+  return layers.map((name, idx) => ({
     layerName: name,
-    meanNorm: Math.random() * 0.3,
-    maxNorm: Math.random() * 0.8,
-    minNorm: Math.random() * 0.1,
+    meanNorm: Number((0.08 + idx * 0.035).toFixed(3)),
+    maxNorm: Number((0.45 + idx * 0.06).toFixed(3)),
+    minNorm: Number((0.02 + idx * 0.01).toFixed(3)),
   }));
 }
 
@@ -390,8 +393,8 @@ export default function TrainingPage() {
             value={selectedRunId || selectedRun?.id || ''}
             onValueChange={setSelectedRunId}
           >
-            <SelectTrigger className="w-[250px]">
-              <SelectValue placeholder="Select training run" />
+            <SelectTrigger className="w-[250px]" aria-label="Training run">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {runs?.map((run) => (
@@ -403,6 +406,13 @@ export default function TrainingPage() {
           </Select>
         </div>
       </div>
+
+      <Alert variant="info">
+        <AlertTitle>Mock training data</AlertTitle>
+        <AlertDescription>
+          Training metrics are currently mocked to validate charts and tables.
+        </AlertDescription>
+      </Alert>
 
       {/* Run Status Cards */}
       {selectedRun && (

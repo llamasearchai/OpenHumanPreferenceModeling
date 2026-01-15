@@ -7,9 +7,12 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { monitoringApi } from '@/lib/api-client';
+import { mockAlerts } from '@/lib/mock-data';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { ExportButton } from '@/components/widgets/ExportButton';
+import { MetricCard } from '@/components/widgets/MetricCard';
 import {
   Card,
   CardContent,
@@ -19,6 +22,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -45,12 +49,15 @@ export default function AlertsPage() {
   const {
     data: alerts,
     isLoading,
+    error,
     refetch,
   } = useQuery({
     queryKey: ['alerts'],
     queryFn: async () => {
       const result = await monitoringApi.getAlerts();
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
     refetchInterval: 30000,
@@ -59,7 +66,9 @@ export default function AlertsPage() {
   const acknowledgeMutation = useMutation({
     mutationFn: async (alertId: string) => {
       const result = await monitoringApi.acknowledgeAlert(alertId);
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
       return result.data;
     },
     onSuccess: () => {
@@ -69,17 +78,20 @@ export default function AlertsPage() {
     onError: (error) => {
       toast({
         title: 'Failed to acknowledge alert',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: extractErrorMessage(error),
         variant: 'destructive',
       });
     },
   });
 
+  const resolvedAlerts = alerts?.length ? alerts : error ? mockAlerts : [];
+  const usingMockData = !!error && (!alerts || alerts.length === 0);
+
   const filteredAlerts = React.useMemo(() => {
-    if (!alerts) return [];
-    if (severityFilter === 'all') return alerts;
-    return alerts.filter((a) => a.severity === severityFilter);
-  }, [alerts, severityFilter]);
+    if (!resolvedAlerts.length) return [];
+    if (severityFilter === 'all') return resolvedAlerts;
+    return resolvedAlerts.filter((a) => a.severity === severityFilter);
+  }, [resolvedAlerts, severityFilter]);
 
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
@@ -120,8 +132,8 @@ export default function AlertsPage() {
             value={severityFilter}
             onValueChange={(value) => setSeverityFilter(value as SeverityFilter)}
           >
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Filter" />
+            <SelectTrigger className="w-32" aria-label="Severity filter">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
@@ -131,7 +143,7 @@ export default function AlertsPage() {
             </SelectContent>
           </Select>
           <ExportButton
-            data={alerts || []}
+            data={resolvedAlerts}
             filename="alerts"
             format="csv"
             variant="outline"
@@ -144,50 +156,53 @@ export default function AlertsPage() {
         </div>
       </div>
 
+      {usingMockData && (
+        <Alert variant="warning">
+          <AlertTitle>Using mock data</AlertTitle>
+          <AlertDescription>
+            Alerts could not be loaded. Showing mock alerts for validation.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {error && !usingMockData && (
+        <Alert variant="destructive">
+          <AlertTitle>Alerts unavailable</AlertTitle>
+          <AlertDescription>
+            {extractErrorMessage(error, 'Failed to load alerts')}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Alert Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
-            <Bell className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{alerts?.length || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Critical</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {alerts?.filter((a) => a.severity === 'critical').length || 0}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Firing</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {alerts?.filter((a) => a.status === 'firing').length || 0}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {alerts?.filter((a) => a.status === 'resolved').length || 0}
-            </div>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Total Alerts"
+          value={resolvedAlerts.length}
+          icon={Bell}
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Critical"
+          value={resolvedAlerts.filter((a) => a.severity === 'critical').length || 0}
+          icon={AlertTriangle}
+          variant="destructive"
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Firing"
+          value={resolvedAlerts.filter((a) => a.status === 'firing').length || 0}
+          icon={Clock}
+          variant="warning"
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Resolved"
+          value={resolvedAlerts.filter((a) => a.status === 'resolved').length || 0}
+          icon={CheckCircle2}
+          variant="success"
+          isLoading={isLoading}
+        />
       </div>
 
       {/* Alert List */}

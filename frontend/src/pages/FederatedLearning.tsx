@@ -5,6 +5,7 @@
  * privacy budget consumption, and client participation.
  */
 
+import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Server,
@@ -32,94 +33,19 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { ApiRequestError, extractErrorMessage } from '@/lib/errors';
+import {
+  mockFederatedClients,
+  mockFederatedRounds,
+  mockFederatedStatus,
+} from '@/lib/mock-data';
 
-// Types
-interface FederatedStatus {
-  round: number;
-  isActive: boolean;
-  totalClients: number;
-  activeClients: number;
-  privacyBudget: {
-    epsilonSpent: number;
-    epsilonRemaining: number;
-    delta: number;
-    totalSteps: number;
-  };
-  modelChecksum: string;
-  lastUpdated: string;
-}
+import {
 
-interface RoundDetails {
-  roundId: number;
-  startedAt: string;
-  completedAt: string | null;
-  participatingClients: number;
-  selectedClients: number;
-  gradientStats: {
-    meanNorm: number;
-    maxNorm: number;
-    noiseScale: number;
-  };
-  status: 'in_progress' | 'completed' | 'failed';
-}
-
-interface ClientParticipation {
-  clientId: string;
-  rounds: number[];
-  lastSeen: string;
-  status: 'active' | 'straggler' | 'offline';
-}
-
-// Mock API functions
-async function fetchStatus(): Promise<FederatedStatus> {
-  return {
-    round: 42,
-    isActive: true,
-    totalClients: 100,
-    activeClients: 87,
-    privacyBudget: {
-      epsilonSpent: 3.2,
-      epsilonRemaining: 6.8,
-      delta: 1e-5,
-      totalSteps: 4200,
-    },
-    modelChecksum: 'a1b2c3d4e5f6',
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-async function fetchRounds(): Promise<RoundDetails[]> {
-  return Array.from({ length: 10 }, (_, i) => ({
-    roundId: 42 - i,
-    startedAt: new Date(Date.now() - i * 3600000).toISOString(),
-    completedAt: i > 0 ? new Date(Date.now() - i * 3600000 + 300000).toISOString() : null,
-    participatingClients: Math.floor(80 + Math.random() * 20),
-    selectedClients: 10,
-    gradientStats: {
-      meanNorm: 0.1 + Math.random() * 0.05,
-      maxNorm: 0.5 + Math.random() * 0.3,
-      noiseScale: 0.1,
-    },
-    status: i === 0 ? 'in_progress' : 'completed',
-  }));
-}
-
-async function fetchClientParticipation(): Promise<ClientParticipation[]> {
-  return Array.from({ length: 20 }, (_, i) => ({
-    clientId: `client-${i.toString().padStart(3, '0')}`,
-    rounds: Array.from(
-      { length: Math.floor(Math.random() * 30) + 10 },
-      (_, j) => 42 - j
-    ),
-    lastSeen: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-    status:
-      Math.random() > 0.9
-        ? 'offline'
-        : Math.random() > 0.8
-          ? 'straggler'
-          : 'active',
-  }));
-}
+  RoundDetails,
+  ClientParticipation,
+} from '@/types/api';
+import apiClient from '@/lib/api-client';
 
 // Privacy budget gauge component
 function PrivacyGauge({
@@ -209,7 +135,8 @@ function ClientHeatmap({ clients }: { clients: ClientParticipation[] }) {
             <span className="text-xs font-mono w-20 truncate">{client.clientId}</span>
             <div className="flex-1 flex gap-px">
               {Array.from({ length: Math.min(maxRounds, 30) }, (_, i) => {
-                const roundNum = 42 - i;
+                // Heuristic mapping for visualization since real history might be sparse
+                const roundNum = 42 - i; // This logic might need adjustment based on real round numbering
                 const participated = client.rounds.includes(roundNum);
                 return (
                   <div
@@ -247,16 +174,17 @@ function GradientDistribution({
 }: {
   stats: { meanNorm: number; maxNorm: number; noiseScale: number };
 }) {
-  // Generate mock distribution data
+  // Generate mock distribution data based on stats for visualization
+  // In a real app we'd fetch the histogram buckets from backend
   const bins = 10;
   const preNoise = Array.from({ length: bins }, (_, i) =>
-    Math.exp(-((i - 3) ** 2) / 2)
+    Math.exp(-((i - 3) ** 2) / 2) * stats.meanNorm
   );
   const postNoise = Array.from({ length: bins }, (_, i) =>
-    Math.exp(-((i - 3) ** 2) / 4)
+    Math.exp(-((i - 3) ** 2) / 4) * (stats.meanNorm + stats.noiseScale)
   );
 
-  const maxVal = Math.max(...preNoise, ...postNoise);
+  const maxVal = Math.max(...preNoise, ...postNoise) || 1;
 
   return (
     <div className="space-y-4">
@@ -346,46 +274,83 @@ export default function FederatedLearningPage() {
   const queryClient = useQueryClient();
 
   // Queries
-  const { data: status, isLoading: statusLoading } = useQuery({
+  const { data: status, isLoading: statusLoading, error: statusError } = useQuery({
     queryKey: ['federated', 'status'],
-    queryFn: fetchStatus,
+    queryFn: async () => {
+      const result = await apiClient.federated.getStatus();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
+    },
+    refetchInterval: 2000,
+  });
+
+  const { data: rounds, isLoading: roundsLoading, error: roundsError } = useQuery({
+    queryKey: ['federated', 'rounds'],
+    queryFn: async () => {
+      const result = await apiClient.federated.getRounds();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
+    },
     refetchInterval: 5000,
   });
 
-  const { data: rounds, isLoading: roundsLoading } = useQuery({
-    queryKey: ['federated', 'rounds'],
-    queryFn: fetchRounds,
-    refetchInterval: 10000,
-  });
-
-  const { data: clients, isLoading: clientsLoading } = useQuery({
+  const { data: clients, isLoading: clientsLoading, error: clientsError } = useQuery({
     queryKey: ['federated', 'clients'],
-    queryFn: fetchClientParticipation,
-    refetchInterval: 30000,
+    queryFn: async () => {
+      const result = await apiClient.federated.getClients();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
+    },
+    refetchInterval: 10000,
   });
 
   // Mutations
   const startRoundMutation = useMutation({
     mutationFn: async () => {
-      await new Promise((r) => window.setTimeout(r, 1000));
+      const result = await apiClient.federated.startRound();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['federated'] });
       toast({ title: 'Round started', variant: 'success' });
     },
+    onError: (err) => {
+      toast({ title: 'Error', description: extractErrorMessage(err), variant: 'destructive' });
+    }
   });
 
   const pauseTrainingMutation = useMutation({
     mutationFn: async () => {
-      await new Promise((r) => window.setTimeout(r, 500));
+      const result = await apiClient.federated.pauseTraining();
+      if (!result.success) {
+        throw ApiRequestError.fromResponse(result);
+      }
+      return result.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['federated'] });
       toast({ title: 'Training paused', variant: 'default' });
     },
+    onError: (err) => {
+      toast({ title: 'Error', description: extractErrorMessage(err), variant: 'destructive' });
+    }
   });
 
-  const latestRound = rounds?.[0];
+  const resolvedStatus = status ?? (statusError ? mockFederatedStatus : undefined);
+  const resolvedRounds = rounds?.length ? rounds : roundsError ? mockFederatedRounds : [];
+  const resolvedClients = clients?.length ? clients : clientsError ? mockFederatedClients : [];
+  const usingMockData = !!statusError || !!roundsError || !!clientsError;
+
+  const latestRound = resolvedRounds?.[0];
 
   return (
     <div className="space-y-6">
@@ -398,7 +363,7 @@ export default function FederatedLearningPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {status?.isActive ? (
+          {resolvedStatus?.isActive ? (
             <Button
               variant="outline"
               onClick={() => pauseTrainingMutation.mutate()}
@@ -419,6 +384,24 @@ export default function FederatedLearningPage() {
         </div>
       </div>
 
+      {usingMockData && (
+        <Alert variant="warning">
+          <AlertTitle>Using mock data</AlertTitle>
+          <AlertDescription>
+            Federated learning data could not be loaded. Showing mock data for validation.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {(statusError || roundsError || clientsError) && !usingMockData && (
+        <Alert variant="destructive">
+          <AlertTitle>Federated data unavailable</AlertTitle>
+          <AlertDescription>
+            {extractErrorMessage(statusError || roundsError || clientsError, 'Failed to load federated learning data')}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Status Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -431,9 +414,9 @@ export default function FederatedLearningPage() {
               <Skeleton className="h-8 w-16" />
             ) : (
               <>
-                <div className="text-2xl font-bold">{status?.round}</div>
-                <Badge variant={status?.isActive ? 'default' : 'secondary'}>
-                  {status?.isActive ? 'Active' : 'Paused'}
+                <div className="text-2xl font-bold">{resolvedStatus?.round}</div>
+                <Badge variant={resolvedStatus?.isActive ? 'default' : 'secondary'}>
+                  {resolvedStatus?.isActive ? 'Active' : 'Paused'}
                 </Badge>
               </>
             )}
@@ -451,10 +434,10 @@ export default function FederatedLearningPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold">
-                  {status?.activeClients} / {status?.totalClients}
+                  {resolvedStatus?.activeClients} / {resolvedStatus?.totalClients}
                 </div>
                 <Progress
-                  value={((status?.activeClients || 0) / (status?.totalClients || 1)) * 100}
+                  value={((resolvedStatus?.activeClients || 0) / (resolvedStatus?.totalClients || 1)) * 100}
                   className="mt-2"
                 />
               </>
@@ -473,10 +456,10 @@ export default function FederatedLearningPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold font-mono">
-                  {status?.privacyBudget.totalSteps.toLocaleString()}
+                  {resolvedStatus?.privacyBudget.totalSteps.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  δ = {status?.privacyBudget.delta}
+                  δ = {resolvedStatus?.privacyBudget.delta}
                 </p>
               </>
             )}
@@ -493,9 +476,9 @@ export default function FederatedLearningPage() {
               <Skeleton className="h-8 w-24" />
             ) : (
               <>
-                <div className="text-lg font-mono">{status?.modelChecksum}</div>
+                <div className="text-lg font-mono">{resolvedStatus?.modelChecksum}</div>
                 <p className="text-xs text-muted-foreground">
-                  Updated {new Date(status?.lastUpdated || '').toLocaleTimeString()}
+                  Updated {new Date(resolvedStatus?.lastUpdated || '').toLocaleTimeString()}
                 </p>
               </>
             )}
@@ -519,10 +502,10 @@ export default function FederatedLearningPage() {
           <CardContent className="flex justify-center py-6">
             {statusLoading ? (
               <Skeleton className="h-40 w-40 rounded-full" />
-            ) : status ? (
+            ) : resolvedStatus ? (
               <PrivacyGauge
-                spent={status.privacyBudget.epsilonSpent}
-                remaining={status.privacyBudget.epsilonRemaining}
+                spent={resolvedStatus.privacyBudget.epsilonSpent}
+                remaining={resolvedStatus.privacyBudget.epsilonRemaining}
               />
             ) : null}
           </CardContent>
@@ -571,8 +554,8 @@ export default function FederatedLearningPage() {
                     <Skeleton key={i} className="h-16 w-full" />
                   ))}
                 </div>
-              ) : rounds ? (
-                <RoundHistory rounds={rounds} />
+              ) : resolvedRounds.length ? (
+                <RoundHistory rounds={resolvedRounds} />
               ) : null}
             </CardContent>
           </Card>
@@ -593,8 +576,8 @@ export default function FederatedLearningPage() {
                     <Skeleton key={i} className="h-6 w-full" />
                   ))}
                 </div>
-              ) : clients ? (
-                <ClientHeatmap clients={clients} />
+              ) : resolvedClients.length ? (
+                <ClientHeatmap clients={resolvedClients} />
               ) : null}
             </CardContent>
           </Card>
@@ -602,12 +585,12 @@ export default function FederatedLearningPage() {
       </Tabs>
 
       {/* Privacy Alert */}
-      {status && status.privacyBudget.epsilonRemaining < 2 && (
+      {resolvedStatus && resolvedStatus.privacyBudget.epsilonRemaining < 2 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Privacy Budget Low</AlertTitle>
           <AlertDescription>
-            Only {status.privacyBudget.epsilonRemaining.toFixed(2)} ε remaining.
+            Only {resolvedStatus.privacyBudget.epsilonRemaining.toFixed(2)} ε remaining.
             Training will automatically stop when budget is exhausted.
           </AlertDescription>
         </Alert>

@@ -1,251 +1,72 @@
 /**
  * UI Store (Zustand)
- * 
+ *
  * Purpose: Client-side UI state management for global application state
  * that doesn't belong in URL or server state
- * 
- * Features:
- * - Sidebar collapsed state
- * - Modal management
- * - Theme preferences
- * - Notification queue
- * - Command palette state
+ *
+ * REFACTORED: Now uses the "Slice Pattern" to compose multiple store slices
+ * into a single unified store for backward compatibility.
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+import { createThemeSlice, ThemeSlice } from './slices/theme-slice';
+import { createNotificationSlice, NotificationSlice } from './slices/notification-slice';
+import { createLayoutSlice, LayoutSlice } from './slices/layout-slice';
+import { createModalSlice, ModalSlice } from './slices/modal-slice';
+
 // ============================================================================
-// Types
+// Types (Re-exported for backward compatibility)
 // ============================================================================
 
-/** Theme options */
-export type Theme = 'light' | 'dark' | 'system';
+export type { Theme } from './slices/theme-slice';
+export type { Notification } from './slices/notification-slice';
+export type { ModalState } from './slices/modal-slice';
 
-/** Modal state */
-export interface ModalState {
-  id: string;
-  isOpen: boolean;
-  data?: unknown;
-}
-
-/** Notification in queue */
-export interface Notification {
-  id: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  title: string;
-  message?: string | undefined;
-  duration?: number;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
-  createdAt: number;
-}
-
-/** UI Store state */
-export interface UIState {
-  // Sidebar
-  sidebarCollapsed: boolean;
-  sidebarMobileOpen: boolean;
-
-  // Theme
-  theme: Theme;
-  resolvedTheme: 'light' | 'dark';
-
-  // Modals
-  modals: Record<string, ModalState>;
-
-  // Notifications
-  notifications: Notification[];
-  maxNotifications: number;
-
-  // Command Palette
-  commandPaletteOpen: boolean;
-
-  // Loading states
-  globalLoading: boolean;
-  loadingMessage?: string | undefined;
-
-  // Breakpoint (updated by resize observer)
-  breakpoint: 'mobile' | 'tablet' | 'desktop';
-  isMobile: boolean;
-  isTablet: boolean;
-  isDesktop: boolean;
-}
-
-/** UI Store actions */
-export interface UIActions {
-  // Sidebar
-  toggleSidebar: () => void;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  toggleMobileSidebar: () => void;
-  setMobileSidebarOpen: (open: boolean) => void;
-
-  // Theme
-  setTheme: (theme: Theme) => void;
-  setResolvedTheme: (theme: 'light' | 'dark') => void;
-
-  // Modals
-  openModal: (id: string, data?: unknown) => void;
-  closeModal: (id: string) => void;
-  toggleModal: (id: string) => void;
-  closeAllModals: () => void;
-  getModalData: <T = unknown>(id: string) => T | undefined;
-
-  // Notifications
-  addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => string;
-  removeNotification: (id: string) => void;
-  clearNotifications: () => void;
-
-  // Command Palette
-  openCommandPalette: () => void;
-  closeCommandPalette: () => void;
-  toggleCommandPalette: () => void;
-
-  // Loading
-  setGlobalLoading: (loading: boolean, message?: string) => void;
-
-  // Breakpoint
-  setBreakpoint: (breakpoint: 'mobile' | 'tablet' | 'desktop') => void;
-
-  // Reset
+// Unified Store Type
+export interface StoreActions {
   reset: () => void;
 }
 
-// ============================================================================
-// Initial State
-// ============================================================================
-
-const initialState: UIState = {
-  sidebarCollapsed: false,
-  sidebarMobileOpen: false,
-  theme: 'system',
-  resolvedTheme: 'light',
-  modals: {},
-  notifications: [],
-  maxNotifications: 5,
-  commandPaletteOpen: false,
-  globalLoading: false,
-  breakpoint: 'desktop',
-  isMobile: false,
-  isTablet: false,
-  isDesktop: true,
-};
+export type UIState = ThemeSlice & NotificationSlice & LayoutSlice & ModalSlice & StoreActions;
 
 // ============================================================================
 // Store
 // ============================================================================
 
-export const useUIStore = create<UIState & UIActions>()(
+export const useUIStore = create<UIState>()(
   persist(
-    (set, get) => ({
-      ...initialState,
-
-      // Sidebar actions
-      toggleSidebar: () =>
-        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-
-      setSidebarCollapsed: (collapsed) =>
-        set({ sidebarCollapsed: collapsed }),
-
-      toggleMobileSidebar: () =>
-        set((state) => ({ sidebarMobileOpen: !state.sidebarMobileOpen })),
-
-      setMobileSidebarOpen: (open) =>
-        set({ sidebarMobileOpen: open }),
-
-      // Theme actions
-      setTheme: (theme) =>
-        set({ theme }),
-
-      setResolvedTheme: (resolved) =>
-        set({ resolvedTheme: resolved }),
-
-      // Modal actions
-      openModal: (id, data) =>
-        set((state) => {
-          const next: ModalState =
-            data === undefined ? { id, isOpen: true } : { id, isOpen: true, data };
-          return { modals: { ...state.modals, [id]: next } };
-        }),
-
-      closeModal: (id) =>
-        set((state) => {
-          const current = state.modals[id];
-          if (!current) return {};
-          return { modals: { ...state.modals, [id]: { ...current, isOpen: false } } };
-        }),
-
-      toggleModal: (id) =>
-        set((state) => {
-          const current = state.modals[id];
-          if (!current) {
-            return { modals: { ...state.modals, [id]: { id, isOpen: true } } };
-          }
-          return { modals: { ...state.modals, [id]: { ...current, isOpen: !current.isOpen } } };
-        }),
-
-      closeAllModals: () =>
-        set((state) => {
-          const next: Record<string, ModalState> = {};
-          for (const [id, modal] of Object.entries(state.modals)) {
-            next[id] = { ...modal, isOpen: false };
-          }
-          return { modals: next };
-        }),
-
-      getModalData: <T = unknown>(id: string) => {
-        return get().modals[id]?.data as T | undefined;
-      },
-
-      // Notification actions
-      addNotification: (notification) => {
-        const id = `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const createdAt = Date.now();
-
-        set((state) => {
-          const newNotification: Notification = { ...notification, id, createdAt };
-          const next = [newNotification, ...state.notifications].slice(0, state.maxNotifications);
-          return { notifications: next };
-        });
-
-        return id;
-      },
-
-      removeNotification: (id) =>
-        set((state) => ({
-          notifications: state.notifications.filter((n) => n.id !== id),
-        })),
-
-      clearNotifications: () =>
-        set({ notifications: [] }),
-
-      // Command palette actions
-      openCommandPalette: () =>
-        set({ commandPaletteOpen: true }),
-
-      closeCommandPalette: () =>
-        set({ commandPaletteOpen: false }),
-
-      toggleCommandPalette: () =>
-        set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
-
-      // Loading actions
-      setGlobalLoading: (loading, message) =>
-        set({ globalLoading: loading, loadingMessage: message }),
-
-      // Breakpoint actions
-      setBreakpoint: (breakpoint) =>
+    (...a) => ({
+      ...createThemeSlice(...a),
+      ...createNotificationSlice(...a),
+      ...createLayoutSlice(...a),
+      ...createModalSlice(...a),
+      
+      // Reset action (manually composed)
+      reset: () => {
+        const [set] = a;
         set({
-          breakpoint,
-          isMobile: breakpoint === 'mobile',
-          isTablet: breakpoint === 'tablet',
-          isDesktop: breakpoint === 'desktop',
-        }),
-
-      // Reset
-      reset: () => set(initialState),
+          // Theme
+          theme: 'system',
+          resolvedTheme: 'light',
+          // Notifications
+          notifications: [],
+          maxNotifications: 5,
+          // Layout
+          sidebarCollapsed: false,
+          sidebarMobileOpen: false,
+          commandPaletteOpen: false,
+          globalLoading: false,
+          loadingMessage: undefined,
+          breakpoint: 'desktop',
+          isMobile: false,
+          isTablet: false,
+          isDesktop: true,
+          // Modals
+          modals: {},
+        });
+      }
     }),
     {
       name: 'ui-storage',

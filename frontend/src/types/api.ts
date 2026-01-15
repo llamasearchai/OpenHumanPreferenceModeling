@@ -305,6 +305,46 @@ export interface PrivacyBudgetStatus {
   total_steps: number;
 }
 
+export interface FederatedPrivacyBudget {
+  epsilonSpent: number;
+  epsilonRemaining: number;
+  delta: number;
+  totalSteps: number;
+}
+
+export interface GradientStats {
+  meanNorm: number;
+  maxNorm: number;
+  noiseScale: number;
+}
+
+export interface RoundDetails {
+  roundId: number;
+  startedAt: string;
+  completedAt: string | null;
+  participatingClients: number;
+  selectedClients: number;
+  gradientStats: GradientStats;
+  status: 'in_progress' | 'completed' | 'failed';
+}
+
+export interface ClientParticipation {
+  clientId: string;
+  rounds: number[];
+  lastSeen: string;
+  status: 'active' | 'straggler' | 'offline';
+}
+
+export interface FederatedStatus {
+  round: number;
+  isActive: boolean;
+  totalClients: number;
+  activeClients: number;
+  privacyBudget: FederatedPrivacyBudget;
+  modelChecksum: string;
+  lastUpdated: string;
+}
+
 // ============================================================================
 // System Health Types
 // ============================================================================
@@ -317,17 +357,54 @@ export interface HealthCheckResponse {
 }
 
 // ============================================================================
+// Settings Types
+// ============================================================================
+
+export interface Settings {
+  company_name: string;
+  company_phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  domain: string;
+  allowed_file_types: string;
+  site_direction: 'ltr' | 'rtl';
+  footer_info: string;
+}
+
+export interface SettingsRequest {
+  company_name?: string;
+  company_phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  domain?: string;
+  allowed_file_types?: string;
+  site_direction?: 'ltr' | 'rtl';
+  footer_info?: string;
+}
+
+// ============================================================================
 // Zod Schemas for Runtime Validation
 // ============================================================================
+
+// ISO 8601 datetime that accepts both with and without timezone suffix
+// e.g., "2026-01-13T12:00:00.000Z" or "2026-01-13T12:00:00.000"
+const isoDatetimeSchema = z.string().refine(
+  (val) => !isNaN(Date.parse(val)),
+  { message: 'Invalid datetime format' }
+);
 
 export const TaskSchema = z.object({
   id: z.string().uuid(),
   type: z.enum(['pairwise', 'ranking', 'critique', 'likert']),
   content: z.record(z.unknown()),
-  created_at: z.string().datetime(),
+  created_at: isoDatetimeSchema,
   priority: z.number().min(0).max(1),
   assigned_to: z.string().nullable(),
-  assigned_at: z.string().datetime().nullable(),
+  assigned_at: isoDatetimeSchema.nullable(),
   status: z.enum(['unassigned', 'assigned', 'completed']),
 });
 
@@ -354,7 +431,7 @@ export const PredictionRecordRequestSchema = z.object({
 export const MetricSchema = z.object({
   name: z.string(),
   value: z.number(),
-  timestamp: z.string().datetime(),
+  timestamp: isoDatetimeSchema,
   tags: z.record(z.string()),
 });
 
@@ -363,7 +440,7 @@ export const AlertSchema = z.object({
   rule_name: z.string(),
   severity: z.string(),
   status: z.enum(['pending', 'firing', 'resolved', 'acknowledged']),
-  timestamp: z.string().datetime(),
+  timestamp: isoDatetimeSchema,
   message: z.string(),
 });
 
@@ -438,4 +515,35 @@ export const queryKeys = {
     all: ['calibration'] as const,
     status: () => [...queryKeys.calibration.all, 'status'] as const,
   },
+  federated: {
+    all: ['federated'] as const,
+    status: () => [...queryKeys.federated.all, 'status'] as const,
+    rounds: () => [...queryKeys.federated.all, 'rounds'] as const,
+    clients: () => [...queryKeys.federated.all, 'clients'] as const,
+  },
 } as const;
+// Active Learning Types
+export interface ALConfig {
+  budget: number;
+  batch_size: number;
+  seed_size: number;
+  strategy: string;
+}
+
+export interface ALStatus {
+  labeledCount: number;
+  unlabeledCount: number;
+  budgetRemaining: number;
+  currentStrategy: string;
+  lastUpdated: string;
+}
+
+export interface QueueItem {
+  id: string;
+  text: string;
+  uncertaintyScore: number;
+  diversityScore: number;
+  iidScore: number;
+  compositeRank: number;
+  createdAt: string;
+}

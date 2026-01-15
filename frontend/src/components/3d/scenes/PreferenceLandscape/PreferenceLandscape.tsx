@@ -5,17 +5,17 @@
  * Features t-SNE/UMAP point cloud with cluster coloring and confidence-based sizing
  */
 
-import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
 import { getCanvasPropsForPreset, isWebGLSupported } from '@/lib/three/canvas-config';
 import { usePerformanceMonitor } from '@/lib/three/performance-monitor';
-import { useSelection, useKeyboardNavigation } from '@/lib/three/interactions';
+import { useKeyboardNavigation } from '@/lib/three/interactions';
 import { PreferencePointMaterial, createPreferencePointGeometry, defaultClusterColors } from '@/lib/three/materials/PreferencePointMaterial';
 import { EffectsPipeline, effectPresets } from '@/lib/three/effects/EffectsPipeline';
-import { A11yProvider, A11yCanvas, KeyboardControls, SceneFallback } from '@/lib/three/a11y/A11yScene';
+import { A11yProvider, A11yCanvas, KeyboardControls, SceneFallback, useA11y } from '@/lib/three/a11y/A11yScene';
 
 // ============================================================================
 // Types
@@ -69,16 +69,18 @@ interface PointCloudProps {
   onPointClick: (point: PreferenceDataPoint) => void;
   onPointHover: (point: PreferenceDataPoint | null) => void;
   quality: 'high' | 'medium' | 'low';
+  prefersReducedMotion: boolean;
 }
 
 function PointCloud({
   dataPoints,
   clusterColors,
-  selectedId,
-  hoveredId,
+  selectedId: _selectedId,
+  hoveredId: _hoveredId,
   onPointClick,
   onPointHover,
   quality,
+  prefersReducedMotion,
 }: PointCloudProps): React.ReactElement | null {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<PreferencePointMaterial>(null);
@@ -108,25 +110,42 @@ function PointCloud({
     });
   }, [quality]);
 
+  React.useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
+  React.useEffect(() => {
+    return () => {
+      material.dispose();
+    };
+  }, [material]);
+
   // Update time uniform for animations
   useFrame((state) => {
+    if (prefersReducedMotion) return;
     if (materialRef.current) {
       materialRef.current.updateTime(state.clock.elapsedTime);
     }
   });
+
+  // Shared vector for pointer calculations to avoid GC
+  const pointerRef = useRef(new THREE.Vector2());
 
   // Handle pointer events
   const handlePointerMove = useCallback(
     (event: THREE.Event) => {
       if (!pointsRef.current) return;
 
-      const pointer = new THREE.Vector2();
       const rect = gl.domElement.getBoundingClientRect();
       const e = event as unknown as { clientX: number; clientY: number };
-      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      // Update shared vector
+      pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(pointer, camera);
+      raycaster.setFromCamera(pointerRef.current, camera);
       raycaster.params.Points = { threshold: 0.5 };
 
       const intersects = raycaster.intersectObject(pointsRef.current);
@@ -144,13 +163,14 @@ function PointCloud({
     (event: THREE.Event) => {
       if (!pointsRef.current) return;
 
-      const pointer = new THREE.Vector2();
       const rect = gl.domElement.getBoundingClientRect();
       const e = event as unknown as { clientX: number; clientY: number };
-      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      // Update shared vector
+      pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(pointer, camera);
+      raycaster.setFromCamera(pointerRef.current, camera);
       raycaster.params.Points = { threshold: 0.5 };
 
       const intersects = raycaster.intersectObject(pointsRef.current);
@@ -190,28 +210,15 @@ function Tooltip({ point }: TooltipProps): React.ReactElement | null {
 
   return (
     <Html position={point.position} center distanceFactor={10}>
-      <div
-        style={{
-          background: 'rgba(0, 0, 0, 0.85)',
-          color: 'white',
-          padding: '8px 12px',
-          borderRadius: 6,
-          fontSize: 12,
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-          transform: 'translateY(-100%)',
-          marginBottom: 8,
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+      <div className="bg-black/85 text-white px-3 py-2 rounded-md text-xs whitespace-nowrap pointer-events-none -translate-y-full mb-2 shadow-lg ring-1 ring-white/10">
+        <div className="font-semibold mb-1">
           {point.label || `Point ${point.id.slice(0, 8)}`}
         </div>
-        <div style={{ opacity: 0.8 }}>
+        <div className="opacity-80">
           Cluster: {point.clusterId} | Confidence: {point.confidence}/5
         </div>
         {point.metadata && (
-          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>
+          <div className="mt-1 text-[11px] opacity-60">
             {Object.entries(point.metadata)
               .slice(0, 3)
               .map(([key, value]) => (
@@ -249,10 +256,11 @@ function SceneContent({
   setSelectedPoint,
 }: SceneContentProps): React.ReactElement {
   const [hoveredPoint, setHoveredPoint] = useState<PreferenceDataPoint | null>(null);
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { prefersReducedMotion } = useA11y();
 
   // Performance monitoring
-  const { metrics, quality: autoQuality } = usePerformanceMonitor({
+  const { quality: autoQuality } = usePerformanceMonitor({
     targetFps: quality === 'low' ? 30 : 60,
     autoAdjust: true,
   });
@@ -279,6 +287,8 @@ function SceneContent({
   useKeyboardNavigation({ enabled: true });
 
   const effectiveQuality = autoQuality || quality;
+  const resolvedAutoRotateSpeed = prefersReducedMotion ? 0 : autoRotateSpeed;
+  const allowAutoRotate = resolvedAutoRotateSpeed > 0;
 
   return (
     <>
@@ -292,8 +302,8 @@ function SceneContent({
         dampingFactor={0.05}
         minDistance={10}
         maxDistance={500}
-        autoRotate={autoRotateSpeed > 0}
-        autoRotateSpeed={autoRotateSpeed}
+        autoRotate={allowAutoRotate}
+        autoRotateSpeed={resolvedAutoRotateSpeed}
       />
 
       {/* Lighting */}
@@ -302,7 +312,16 @@ function SceneContent({
       <pointLight position={[-100, -100, -100]} intensity={0.5} />
 
       {/* Background */}
-      {showStars && <Stars radius={300} depth={50} count={5000} factor={4} fade speed={1} />}
+      {showStars && (
+        <Stars
+          radius={300}
+          depth={50}
+          count={5000}
+          factor={4}
+          fade
+          speed={prefersReducedMotion ? 0 : 1}
+        />
+      )}
 
       {/* Grid */}
       {showGrid && (
@@ -318,6 +337,7 @@ function SceneContent({
         onPointClick={handlePointClick}
         onPointHover={handlePointHover}
         quality={effectiveQuality}
+        prefersReducedMotion={prefersReducedMotion}
       />
 
       {/* Tooltip */}
@@ -349,7 +369,7 @@ export function PreferenceLandscape({
   cameraPosition = [0, 50, 100],
   autoRotateSpeed = 0,
   quality = 'high',
-  showStats = false,
+  showStats: _showStats = false,
   className,
 }: PreferenceLandscapeProps): React.ReactElement {
   const [selectedPoint, setSelectedPoint] = useState<PreferenceDataPoint | null>(null);
@@ -393,11 +413,11 @@ export function PreferenceLandscape({
   const canvasProps = getCanvasPropsForPreset('preference-landscape');
 
   return (
-    <div className={className} style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div className={`relative w-full h-full ${className || ''}`}>
       <Canvas
         {...canvasProps}
         camera={{ position: cameraPosition, fov: 60 }}
-        style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)' }}
+        className="bg-gradient-to-b from-slate-900 to-indigo-950"
       >
         <A11yProvider>
           <A11yCanvas sceneDescription={`3D preference landscape with ${dataPoints.length} data points`}>
@@ -428,29 +448,14 @@ export function PreferenceLandscape({
       </Canvas>
 
       {/* Legend */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 16,
-          left: 16,
-          background: 'rgba(0, 0, 0, 0.7)',
-          padding: 12,
-          borderRadius: 8,
-          color: 'white',
-          fontSize: 12,
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Clusters</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="absolute bottom-4 left-4 bg-black/70 p-3 rounded-lg text-white text-xs backdrop-blur-sm border border-white/10">
+        <div className="font-semibold mb-2">Clusters</div>
+        <div className="flex flex-wrap gap-2">
           {clusterColors.slice(0, new Set(dataPoints.map((p) => p.clusterId)).size).map((color, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div key={i} className="flex items-center gap-1">
               <div
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: color,
-                }}
+                className="w-3 h-3 rounded-full"
+                style={{ background: color }}
               />
               <span>Cluster {i}</span>
             </div>
@@ -460,32 +465,21 @@ export function PreferenceLandscape({
 
       {/* Selected point info */}
       {selectedPoint && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            background: 'rgba(0, 0, 0, 0.85)',
-            padding: 16,
-            borderRadius: 8,
-            color: 'white',
-            maxWidth: 300,
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>
+        <div className="absolute top-4 right-4 bg-black/85 p-4 rounded-lg text-white max-w-[300px] backdrop-blur-md border border-white/10 shadow-xl">
+          <div className="font-semibold mb-2">
             {selectedPoint.label || `Point ${selectedPoint.id.slice(0, 8)}`}
           </div>
-          <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          <div className="text-[13px] leading-relaxed space-y-1">
             <div>Cluster: {selectedPoint.clusterId}</div>
             <div>Confidence: {selectedPoint.confidence}/5</div>
             <div>
               Position: ({selectedPoint.position.map((v) => v.toFixed(2)).join(', ')})
             </div>
             {selectedPoint.metadata && (
-              <div style={{ marginTop: 8, borderTop: '1px solid #333', paddingTop: 8 }}>
+              <div className="mt-2 border-t border-white/20 pt-2">
                 {Object.entries(selectedPoint.metadata).map(([key, value]) => (
                   <div key={key}>
-                    <span style={{ opacity: 0.7 }}>{key}:</span> {String(value)}
+                    <span className="opacity-70">{key}:</span> {String(value)}
                   </div>
                 ))}
               </div>
@@ -496,15 +490,7 @@ export function PreferenceLandscape({
               setSelectedPoint(null);
               onPointSelect?.(null);
             }}
-            style={{
-              marginTop: 12,
-              padding: '6px 12px',
-              background: '#3b82f6',
-              border: 'none',
-              borderRadius: 4,
-              color: 'white',
-              cursor: 'pointer',
-            }}
+            className="mt-3 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 rounded text-white text-sm transition-colors"
           >
             Close
           </button>

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useUIStore } from '@/stores/ui-store';
+import { selectSidebarCollapsed, useUIStore } from '@/stores/ui-store';
 import {
   Tooltip,
   TooltipContent,
@@ -46,29 +46,47 @@ const navItems = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const sidebarCollapsed = useUIStore(selectSidebarCollapsed);
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
 
   return (
     <TooltipProvider>
+      {/* Mobile overlay backdrop */}
+      <div
+        className={cn(
+          'fixed inset-0 z-30 bg-background/80 backdrop-blur-sm md:hidden transition-opacity duration-300',
+          sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        )}
+        onClick={toggleSidebar}
+        aria-hidden="true"
+      />
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 h-screen border-r bg-card transition-all duration-300',
-          sidebarCollapsed ? 'w-16' : 'w-64'
+          'fixed left-0 top-0 z-40 h-screen border-r bg-background/95 md:bg-background/60 backdrop-blur-xl shadow-lg transition-all duration-300',
+          // Mobile: hidden when collapsed, full width when open
+          sidebarCollapsed
+            ? '-translate-x-full md:translate-x-0 w-64 md:w-16'
+            : 'translate-x-0 w-64'
         )}
+        role="navigation"
+        aria-label="Main sidebar"
       >
         {/* Logo/Brand */}
         <div className={cn(
-          'flex h-16 items-center border-b px-4',
+          'flex h-16 items-center border-b border-border/50 px-4',
           sidebarCollapsed ? 'justify-center' : 'justify-between'
         )}>
           {!sidebarCollapsed && (
-            <span className="text-lg font-bold truncate">OHPM</span>
+            <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent truncate">
+              OHPM
+            </span>
           )}
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleSidebar}
             className="h-8 w-8"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {sidebarCollapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -79,15 +97,21 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex flex-col gap-1 p-2">
+        <nav className="flex flex-col gap-1 p-2" role="navigation" aria-label="Main navigation">
           {navItems.map((item) => {
+            // Fix: Use exact match for root, and ensure path segment match for others
+            // This prevents /alerts from incorrectly matching /alert
             const isActive = location.pathname === item.to ||
-              (item.to !== '/' && location.pathname.startsWith(item.to));
+              (item.to !== '/' && (
+                location.pathname === item.to ||
+                location.pathname.startsWith(`${item.to}/`)
+              ));
 
             const link = (
               <NavLink
                 key={item.to}
                 to={item.to}
+                aria-label={item.label}
                 className={cn(
                   'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                   'hover:bg-accent hover:text-accent-foreground',
@@ -98,7 +122,11 @@ export function Sidebar() {
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
-                {!sidebarCollapsed && <span>{item.label}</span>}
+                {!sidebarCollapsed ? (
+                  <span>{item.label}</span>
+                ) : (
+                  <span className="sr-only">{item.label}</span>
+                )}
               </NavLink>
             );
 

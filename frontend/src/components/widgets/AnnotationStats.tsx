@@ -8,34 +8,42 @@ import { useQuery } from '@tanstack/react-query';
 import { annotationApi } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ProgressRing } from './ProgressRing';
 import { StatCard } from './StatCard';
 import { BarChart } from './BarChart';
-import { Clock, CheckCircle2, TrendingUp, Target } from 'lucide-react';
+import { Clock, CheckCircle2, Target } from 'lucide-react';
+import { makeMockAnnotations, mockQualityMetrics } from '@/lib/mock-data';
 
 interface AnnotationStatsProps {
   annotatorId: string;
 }
 
 export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
-  const { data: annotationsData, isLoading } = useQuery({
+  const { data: annotationsData, isLoading, error: annotationsError } = useQuery({
     queryKey: ['annotations', 'stats', annotatorId],
     queryFn: async () => {
-      const result = await annotationApi.listAnnotations({
-        annotator_id: annotatorId,
+      const result = await annotationApi.getAnnotations({
+        annotatorId: annotatorId,
         page: 1,
-        page_size: 1000,
+        pageSize: 1000,
       });
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        const error = (result as unknown as { error: { detail: string } }).error;
+        throw new Error(error.detail);
+      }
       return result.data;
     },
   });
 
-  const { data: qualityData, isLoading: qualityLoading } = useQuery({
+  const { data: qualityData, isLoading: qualityLoading, error: qualityError } = useQuery({
     queryKey: ['quality', 'metrics', annotatorId],
     queryFn: async () => {
       const result = await annotationApi.getQualityMetrics(annotatorId);
-      if (!result.success) throw new Error(result.error.detail);
+      if (!result.success) {
+        const error = (result as unknown as { error: { detail: string } }).error;
+        throw new Error(error.detail);
+      }
       return result.data;
     },
   });
@@ -50,7 +58,11 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
     );
   }
 
-  const annotations = annotationsData?.data || [];
+  const resolvedAnnotations = annotationsData ?? (annotationsError ? makeMockAnnotations(annotatorId) : undefined);
+  const resolvedQuality = qualityData ?? (qualityError ? { ...mockQualityMetrics, annotator_id: annotatorId } : undefined);
+  const usingMockData = (!!annotationsError && !annotationsData) || (!!qualityError && !qualityData);
+
+  const annotations = resolvedAnnotations?.data || [];
   const totalAnnotations = annotations.length;
   const avgTime = annotations.length
     ? annotations.reduce((sum, a) => sum + a.time_spent_seconds, 0) / annotations.length
@@ -67,7 +79,7 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
 
   const typeChartData = Object.entries(typeDistribution).map(([name, value]) => ({
     name,
-    value,
+    value: value as number,
   }));
 
   return (
@@ -94,7 +106,7 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
         />
         <div className="flex items-center justify-center">
           <ProgressRing
-            value={qualityData?.agreement_score ? qualityData.agreement_score * 100 : 0}
+            value={resolvedQuality?.agreement_score ? resolvedQuality.agreement_score * 100 : 0}
             max={100}
             size={100}
             label="Agreement"
@@ -102,6 +114,15 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
           />
         </div>
       </div>
+
+      {usingMockData && (
+        <Alert variant="warning">
+          <AlertTitle>Using mock data</AlertTitle>
+          <AlertDescription>
+            Annotation statistics could not be loaded. Showing mock data for validation.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Charts */}
       {typeChartData.length > 0 && (
@@ -114,7 +135,7 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
       )}
 
       {/* Quality Metrics */}
-      {qualityData && (
+      {resolvedQuality && (
         <Card>
           <CardHeader>
             <CardTitle>Quality Metrics</CardTitle>
@@ -125,19 +146,19 @@ export function AnnotationStats({ annotatorId }: AnnotationStatsProps) {
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">Agreement Score</div>
                 <div className="text-2xl font-bold">
-                  {(qualityData.agreement_score * 100).toFixed(1)}%
+                  {(resolvedQuality.agreement_score * 100).toFixed(1)}%
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">Gold Pass Rate</div>
                 <div className="text-2xl font-bold">
-                  {(qualityData.gold_pass_rate * 100).toFixed(1)}%
+                  {(resolvedQuality.gold_pass_rate * 100).toFixed(1)}%
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">Avg Time</div>
                 <div className="text-2xl font-bold">
-                  {qualityData.avg_time_per_task.toFixed(1)}s
+                  {resolvedQuality.avg_time_per_task.toFixed(1)}s
                 </div>
               </div>
             </div>
