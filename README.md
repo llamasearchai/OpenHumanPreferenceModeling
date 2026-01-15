@@ -2,7 +2,7 @@
 
 ## Overview
 
-Open Human Preference Modeling (OHPM) is a comprehensive platform designed to model, predict, and align AI systems with complex human preferences. It integrates multi-modal signal processing (EEG, physiological), advanced reinforcement learning techniques (SFT, DPO), active learning strategies, and privacy-preserving federated inference into a unified, production-grade system.
+Open Human Preference Modeling (OHPM) is a comprehensive platform designed to model, predict, and align AI systems with complex human preferences. It integrates multi-modal signal processing (EEG, physiological), advanced reinforcement learning techniques (SFT, DPO), active learning strategies, and privacy-preserving federated inference into a unified system.
 
 The platform is architected as a set of decoupled microservices, enabling scalable data ingestion, model training, and real-time inference.
 
@@ -83,7 +83,18 @@ cd frontend
 npm run dev
 ```
 
-The application will be accessible at `http://localhost:5173`.
+The application will be accessible at `http://localhost:5174`.
+
+### Running with Mocks
+
+To run the frontend without a backend dependency, using the integrated Mock Service Worker (MSW):
+
+```bash
+cd frontend
+VITE_USE_MOCKS=true npm run dev
+```
+
+This is useful for frontend development, UI testing, and demos. Use the **Dev Login** option to bypass authentication.
 
 ## Testing
 
