@@ -110,6 +110,12 @@ export type RecalibrationRequest = components['schemas']['RecalibrationRequest']
 export type RecalibrationResponse = components['schemas']['RecalibrationResponse'];
 export type ProblemDetail = components['schemas']['ProblemDetail'];
 export type WebSocketMessage = components['schemas']['WebSocketMessage'];
+export type FederatedStatus = components['schemas']['FederatedStatus'];
+export type RoundDetails = components['schemas']['RoundDetails'];
+export type ClientParticipation = components['schemas']['ClientParticipation'];
+export type ALConfig = components['schemas']['ALConfig'];
+export type ALStatus = components['schemas']['ALStatus'];
+export type QueueItem = components['schemas']['QueueItem'];
 
 // Client configuration
 interface ClientConfig {
@@ -224,6 +230,25 @@ export function createApiClient(config: ClientConfig) {
     health: {
       check: () =>
         client.GET('/api/health'),
+    },
+
+    // Federated Learning endpoints
+    federated: {
+      getStatus: () => client.GET('/api/federated/status'),
+      getRounds: () => client.GET('/api/federated/rounds'),
+      getClients: () => client.GET('/api/federated/clients'),
+      startRound: () => client.POST('/api/federated/start'),
+      pauseTraining: () => client.POST('/api/federated/pause'),
+    },
+
+    // Active Learning endpoints
+    activeLearning: {
+      getConfig: () => client.GET('/api/active-learning/config'),
+      updateConfig: (body: components['schemas']['ALConfig']) => 
+        client.PATCH('/api/active-learning/config', { body }),
+      getStatus: () => client.GET('/api/active-learning/status'),
+      getQueue: () => client.GET('/api/active-learning/queue'),
+      refresh: () => client.POST('/api/active-learning/refresh'),
     },
 
     // Raw client for advanced usage

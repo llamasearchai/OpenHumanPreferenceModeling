@@ -1,0 +1,1063 @@
+Initialized: Labeled=10, Unlabeled=10
+components:
+  schemas:
+    Alert:
+      properties:
+        id:
+          title: Id
+          type: string
+        message:
+          title: Message
+          type: string
+        rule_name:
+          title: Rule Name
+          type: string
+        severity:
+          title: Severity
+          type: string
+        status:
+          title: Status
+          type: string
+        timestamp:
+          format: date-time
+          title: Timestamp
+          type: string
+      required:
+      - id
+      - rule_name
+      - severity
+      - status
+      - timestamp
+      - message
+      title: Alert
+      type: object
+    Annotation:
+      properties:
+        annotation_type:
+          title: Annotation Type
+          type: string
+        annotator_id:
+          title: Annotator Id
+          type: string
+        confidence:
+          maximum: 5.0
+          minimum: 1.0
+          title: Confidence
+          type: integer
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        id:
+          title: Id
+          type: string
+        response_data:
+          additionalProperties: true
+          title: Response Data
+          type: object
+        task_id:
+          title: Task Id
+          type: string
+        time_spent_seconds:
+          title: Time Spent Seconds
+          type: number
+      required:
+      - task_id
+      - annotator_id
+      - annotation_type
+      - response_data
+      - time_spent_seconds
+      - confidence
+      title: Annotation
+      type: object
+    AuthTokensResponse:
+      properties:
+        accessToken:
+          title: Accesstoken
+          type: string
+        expiresIn:
+          title: Expiresin
+          type: integer
+        refreshToken:
+          title: Refreshtoken
+          type: string
+        tokenType:
+          title: Tokentype
+          type: string
+      required:
+      - accessToken
+      - refreshToken
+      - expiresIn
+      - tokenType
+      title: AuthTokensResponse
+      type: object
+    ClientParticipation:
+      properties:
+        clientId:
+          title: Clientid
+          type: string
+        lastSeen:
+          title: Lastseen
+          type: string
+        rounds:
+          items:
+            type: integer
+          title: Rounds
+          type: array
+        status:
+          title: Status
+          type: string
+      required:
+      - clientId
+      - rounds
+      - lastSeen
+      - status
+      title: ClientParticipation
+      type: object
+    DevLoginRequest:
+      properties:
+        user_id:
+          default: demo-user-id
+          title: User Id
+          type: string
+      title: DevLoginRequest
+      type: object
+    FederatedStatus:
+      properties:
+        activeClients:
+          title: Activeclients
+          type: integer
+        isActive:
+          title: Isactive
+          type: boolean
+        lastUpdated:
+          title: Lastupdated
+          type: string
+        modelChecksum:
+          title: Modelchecksum
+          type: string
+        privacyBudget:
+          $ref: '#/components/schemas/PrivacyBudget'
+        round:
+          title: Round
+          type: integer
+        totalClients:
+          title: Totalclients
+          type: integer
+      required:
+      - round
+      - isActive
+      - totalClients
+      - activeClients
+      - privacyBudget
+      - modelChecksum
+      - lastUpdated
+      title: FederatedStatus
+      type: object
+    GradientStats:
+      properties:
+        maxNorm:
+          title: Maxnorm
+          type: number
+        meanNorm:
+          title: Meannorm
+          type: number
+        noiseScale:
+          title: Noisescale
+          type: number
+      required:
+      - meanNorm
+      - maxNorm
+      - noiseScale
+      title: GradientStats
+      type: object
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          title: Detail
+          type: array
+      title: HTTPValidationError
+      type: object
+    LoginRequest:
+      properties:
+        email:
+          format: email
+          title: Email
+          type: string
+        password:
+          title: Password
+          type: string
+      required:
+      - email
+      - password
+      title: LoginRequest
+      type: object
+    Metric:
+      properties:
+        name:
+          title: Name
+          type: string
+        tags:
+          additionalProperties:
+            type: string
+          default: {}
+          title: Tags
+          type: object
+        timestamp:
+          format: date-time
+          title: Timestamp
+          type: string
+        value:
+          title: Value
+          type: number
+      required:
+      - name
+      - value
+      - timestamp
+      title: Metric
+      type: object
+    PaginatedAnnotations:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Annotation'
+          title: Data
+          type: array
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+      - data
+      - meta
+      title: PaginatedAnnotations
+      type: object
+    PaginationMeta:
+      properties:
+        hasNext:
+          title: Hasnext
+          type: boolean
+        hasPrev:
+          title: Hasprev
+          type: boolean
+        page:
+          title: Page
+          type: integer
+        pageSize:
+          title: Pagesize
+          type: integer
+        total:
+          title: Total
+          type: integer
+        totalPages:
+          title: Totalpages
+          type: integer
+      required:
+      - page
+      - pageSize
+      - total
+      - totalPages
+      - hasNext
+      - hasPrev
+      title: PaginationMeta
+      type: object
+    PredictRequest:
+      properties:
+        state_vector:
+          items:
+            type: number
+          maxItems: 10
+          minItems: 1
+          title: State Vector
+          type: array
+      required:
+      - state_vector
+      title: PredictRequest
+      type: object
+    PredictionRecordRequest:
+      properties:
+        confidence:
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          type: number
+        correct:
+          maximum: 1.0
+          minimum: 0.0
+          title: Correct
+          type: integer
+      required:
+      - confidence
+      - correct
+      title: PredictionRecordRequest
+      type: object
+    PrivacyBudget:
+      properties:
+        delta:
+          title: Delta
+          type: number
+        epsilonRemaining:
+          title: Epsilonremaining
+          type: number
+        epsilonSpent:
+          title: Epsilonspent
+          type: number
+        totalSteps:
+          title: Totalsteps
+          type: integer
+      required:
+      - epsilonSpent
+      - epsilonRemaining
+      - delta
+      - totalSteps
+      title: PrivacyBudget
+      type: object
+    QualityMetrics:
+      properties:
+        agreement_score:
+          title: Agreement Score
+          type: number
+        annotator_id:
+          title: Annotator Id
+          type: string
+        avg_time_per_task:
+          title: Avg Time Per Task
+          type: number
+        flags:
+          default: []
+          items:
+            type: string
+          title: Flags
+          type: array
+        gold_pass_rate:
+          title: Gold Pass Rate
+          type: number
+      required:
+      - annotator_id
+      - agreement_score
+      - gold_pass_rate
+      - avg_time_per_task
+      title: QualityMetrics
+      type: object
+    RecalibrationRequest:
+      properties:
+        max_iterations:
+          default: 100
+          maximum: 1000.0
+          minimum: 1.0
+          title: Max Iterations
+          type: integer
+        target_ece:
+          default: 0.08
+          maximum: 1.0
+          minimum: 0.0
+          title: Target Ece
+          type: number
+        validation_data_uri:
+          title: Validation Data Uri
+          type: string
+      required:
+      - validation_data_uri
+      title: RecalibrationRequest
+      type: object
+    RecalibrationResponse:
+      properties:
+        iterations:
+          title: Iterations
+          type: integer
+        post_ece:
+          title: Post Ece
+          type: number
+        pre_ece:
+          title: Pre Ece
+          type: number
+        temperature:
+          title: Temperature
+          type: number
+      required:
+      - temperature
+      - pre_ece
+      - post_ece
+      - iterations
+      title: RecalibrationResponse
+      type: object
+    RefreshRequest:
+      properties:
+        refreshToken:
+          title: Refreshtoken
+          type: string
+      required:
+      - refreshToken
+      title: RefreshRequest
+      type: object
+    RegisterRequest:
+      properties:
+        email:
+          format: email
+          title: Email
+          type: string
+        name:
+          title: Name
+          type: string
+        password:
+          title: Password
+          type: string
+      required:
+      - email
+      - password
+      - name
+      title: RegisterRequest
+      type: object
+    RoundDetails:
+      properties:
+        completedAt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Completedat
+        gradientStats:
+          $ref: '#/components/schemas/GradientStats'
+        participatingClients:
+          title: Participatingclients
+          type: integer
+        roundId:
+          title: Roundid
+          type: integer
+        selectedClients:
+          title: Selectedclients
+          type: integer
+        startedAt:
+          title: Startedat
+          type: string
+        status:
+          title: Status
+          type: string
+      required:
+      - roundId
+      - startedAt
+      - completedAt
+      - participatingClients
+      - selectedClients
+      - gradientStats
+      - status
+      title: RoundDetails
+      type: object
+    Task:
+      properties:
+        assigned_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Assigned At
+        assigned_to:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assigned To
+        content:
+          additionalProperties: true
+          title: Content
+          type: object
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        id:
+          title: Id
+          type: string
+        priority:
+          default: 0.0
+          title: Priority
+          type: number
+        status:
+          default: unassigned
+          enum:
+          - unassigned
+          - assigned
+          - completed
+          title: Status
+          type: string
+        type:
+          enum:
+          - pairwise
+          - ranking
+          - critique
+          - likert
+          title: Type
+          type: string
+      required:
+      - type
+      - content
+      title: Task
+      type: object
+    UserResponse:
+      properties:
+        createdAt:
+          title: Createdat
+          type: string
+        email:
+          title: Email
+          type: string
+        id:
+          title: Id
+          type: string
+        name:
+          title: Name
+          type: string
+        role:
+          title: Role
+          type: string
+        updatedAt:
+          title: Updatedat
+          type: string
+      required:
+      - id
+      - email
+      - name
+      - role
+      - createdAt
+      - updatedAt
+      title: UserResponse
+      type: object
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+      type: object
+info:
+  description: Unified API for all backend services
+  title: OpenHumanPreferenceModeling API
+  version: 1.0.0
+openapi: 3.1.0
+paths:
+  /api/alerts:
+    get:
+      operationId: get_alerts_api_alerts_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Alert'
+                title: Response Get Alerts Api Alerts Get
+                type: array
+          description: Successful Response
+      summary: Get Alerts
+  /api/alerts/{alert_id}/ack:
+    post:
+      operationId: ack_alert_api_alerts__alert_id__ack_post
+      parameters:
+      - in: path
+        name: alert_id
+        required: true
+        schema:
+          title: Alert Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Ack Alert
+  /api/annotations:
+    get:
+      description: List annotations with optional filters and pagination.
+      operationId: list_annotations_api_annotations_get
+      parameters:
+      - in: query
+        name: annotator_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Annotator Id
+      - in: query
+        name: task_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Task Id
+      - in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          title: Page
+          type: integer
+      - in: query
+        name: page_size
+        required: false
+        schema:
+          default: 20
+          title: Page Size
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAnnotations'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Annotations
+    post:
+      description: Submit completed annotation.
+      operationId: submit_annotation_api_annotations_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Annotation'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Submit Annotation
+  /api/auth/dev-login:
+    post:
+      description: 'Development-only login bypass.
+
+
+        This endpoint allows instant authentication without password
+
+        for development and testing purposes. ONLY available when
+
+        OHPM_DEV_MODE=true environment variable is set.
+
+
+        DO NOT enable in production!'
+      operationId: api_dev_login_api_auth_dev_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevLoginRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Dev Login
+  /api/auth/dev-status:
+    get:
+      description: Check if dev mode is enabled.
+      operationId: api_dev_status_api_auth_dev_status_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Api Dev Status
+  /api/auth/login:
+    post:
+      description: Login with email and password.
+      operationId: api_login_api_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Login
+  /api/auth/logout:
+    post:
+      description: Logout and revoke refresh token.
+      operationId: api_logout_api_auth_logout_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Logout
+  /api/auth/me:
+    get:
+      description: Get current user info.
+      operationId: api_me_api_auth_me_get
+      parameters:
+      - in: header
+        name: authorization
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Me
+  /api/auth/refresh:
+    post:
+      description: Refresh access token.
+      operationId: api_refresh_api_auth_refresh_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Refresh
+  /api/auth/register:
+    post:
+      description: Register a new user.
+      operationId: api_register_api_auth_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Register
+  /api/calibration/predictions:
+    post:
+      operationId: record_prediction_api_calibration_predictions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictionRecordRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Record Prediction
+  /api/calibration/recalibrate:
+    post:
+      operationId: recalibrate_api_calibration_recalibrate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecalibrationRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecalibrationResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Recalibrate
+  /api/federated/clients:
+    get:
+      operationId: get_clients_api_federated_clients_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ClientParticipation'
+                title: Response Get Clients Api Federated Clients Get
+                type: array
+          description: Successful Response
+      summary: Get Clients
+      tags:
+      - Federated Learning
+  /api/federated/pause:
+    post:
+      operationId: pause_training_api_federated_pause_post
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Pause Training
+      tags:
+      - Federated Learning
+  /api/federated/rounds:
+    get:
+      operationId: get_rounds_api_federated_rounds_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/RoundDetails'
+                title: Response Get Rounds Api Federated Rounds Get
+                type: array
+          description: Successful Response
+      summary: Get Rounds
+      tags:
+      - Federated Learning
+  /api/federated/start:
+    post:
+      operationId: start_training_api_federated_start_post
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Start Training
+      tags:
+      - Federated Learning
+  /api/federated/status:
+    get:
+      operationId: get_status_api_federated_status_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FederatedStatus'
+          description: Successful Response
+      summary: Get Status
+      tags:
+      - Federated Learning
+  /api/health:
+    get:
+      description: Health check endpoint.
+      operationId: health_check_api_health_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Health Check
+  /api/metrics:
+    get:
+      operationId: get_metrics_api_metrics_get
+      parameters:
+      - in: query
+        name: name
+        required: true
+        schema:
+          title: Name
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Metric'
+                title: Response Get Metrics Api Metrics Get
+                type: array
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Metrics
+  /api/predict:
+    post:
+      description: 'Simulate model prediction.
+
+        Deterministic based on input vector sum.'
+      operationId: api_predict_api_predict_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Api Predict
+  /api/quality/metrics:
+    get:
+      description: Get quality metrics for an annotator.
+      operationId: get_quality_metrics_api_quality_metrics_get
+      parameters:
+      - in: query
+        name: annotator_id
+        required: true
+        schema:
+          title: Annotator Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityMetrics'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Quality Metrics
+  /api/tasks/next:
+    get:
+      description: Get next high-priority task for annotator.
+      operationId: get_next_task_api_tasks_next_get
+      parameters:
+      - in: query
+        name: annotator_id
+        required: true
+        schema:
+          title: Annotator Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Next Task
+  /api/ws/stats:
+    get:
+      description: Get WebSocket connection statistics.
+      operationId: websocket_stats_api_ws_stats_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Websocket Stats
+
