@@ -25,6 +25,10 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import List, Dict, Optional
 from datetime import datetime
 
+# Federated learning router and background worker
+from api.routers.federated import router as federated_router, federated_worker
+from api.routers.active_learning import router as active_learning_router
+
 # Set default environment variables if not set (for calibration API)
 if not os.getenv("CALIBRATION_JWT_SECRET"):
     os.environ["CALIBRATION_JWT_SECRET"] = "dev-secret-key-change-in-production"
@@ -267,6 +271,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting unified OpenHumanPreferenceModeling API")
     if MONITORING_AVAILABLE:
         asyncio.create_task(run_monitoring_poller())
+    asyncio.create_task(federated_worker())
     if WEBSOCKET_AVAILABLE and ws_manager:
         await ws_manager.start_heartbeat()
     yield
@@ -330,6 +335,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# API routers
+app.include_router(federated_router)
+app.include_router(active_learning_router)
 
 # CORS middleware
 cors_origins = [
@@ -634,6 +643,102 @@ async def api_dev_login(request: DevLoginRequest):
 async def api_dev_status():
     """Check if dev mode is enabled."""
     return {"devMode": DEV_MODE}
+
+
+# ============================================================================
+# Settings API
+# ============================================================================
+
+class SettingsRequest(BaseModel):
+    company_name: Optional[str] = None
+    company_phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    domain: Optional[str] = None
+    allowed_file_types: Optional[str] = None
+    site_direction: Optional[str] = Field(None, pattern="^(ltr|rtl)$")
+    footer_info: Optional[str] = None
+
+
+class SettingsResponse(BaseModel):
+    company_name: str
+    company_phone: str
+    address: str
+    city: str
+    state: str
+    zip_code: str
+    domain: str
+    allowed_file_types: str
+    site_direction: str
+    footer_info: str
+
+
+# In-memory settings storage (in production, use a database)
+settings_db: Dict[str, str] = {
+    "company_name": "OpenHuman Preference Modeling",
+    "company_phone": "",
+    "address": "",
+    "city": "",
+    "state": "",
+    "zip_code": "",
+    "domain": "",
+    "allowed_file_types": ".pdf, .csv, .fastq",
+    "site_direction": "ltr",
+    "footer_info": "{company_name}\n{address}\n{city}, {state} {zip}",
+}
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings():
+    """Get current application settings."""
+    # #region agent log
+    log_entry = {
+        "location": "main.py:get_settings",
+        "message": "Settings retrieved",
+        "data": {},
+        "timestamp": int(time.time() * 1000),
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+    }
+    try:
+        with open("/Users/o11/OpenHumanPreferenceModeling/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    return SettingsResponse(**settings_db)
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def update_settings(settings: SettingsRequest):
+    """Update application settings."""
+    # #region agent log
+    log_entry = {
+        "location": "main.py:update_settings",
+        "message": "Settings updated",
+        "data": {"fields_updated": [k for k, v in settings.model_dump(exclude_unset=True).items() if v is not None]},
+        "timestamp": int(time.time() * 1000),
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+    }
+    try:
+        with open("/Users/o11/OpenHumanPreferenceModeling/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    
+    # Update only provided fields
+    update_data = settings.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        if value is not None:
+            settings_db[key] = value
+    
+    return SettingsResponse(**settings_db)
 
 
 # Health Check
