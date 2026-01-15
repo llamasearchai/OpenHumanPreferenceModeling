@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal JavaScript Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    .test {
+      margin: 10px 0;
+      padding: 10px;
+      background: white;
+      border: 2px solid #000;
+    }
+    .pass { background: #d4edda; border-color: #28a745; }
+    .fail { background: #f8d7da; border-color: #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>Minimal JavaScript Execution Test</h1>
+  <p>This page tests if JavaScript is executing at all.</p>
+  <div id="results"></div>
+  
+  <script>
+    const results = document.getElementById('results');
+    
+    function addTest(name, passed, details) {
+      const div = document.createElement('div');
+      div.className = 'test ' + (passed ? 'pass' : 'fail');
+      div.innerHTML = `<strong>${name}:</strong> ${passed ? 'PASS' : 'FAIL'}<br>${details}`;
+      results.appendChild(div);
+      console.log(`[TEST] ${name}: ${passed ? 'PASS' : 'FAIL'} - ${details}`);
+    }
+    
+    // Test 1: Basic JavaScript execution
+    try {
+      addTest('JavaScript Execution', true, 'Script is running');
+    } catch (e) {
+      addTest('JavaScript Execution', false, e.message);
+    }
+    
+    // Test 2: DOM manipulation
+    try {
+      const testDiv = document.createElement('div');
+      testDiv.textContent = 'DOM test';
+      document.body.appendChild(testDiv);
+      addTest('DOM Manipulation', true, 'Can create and append elements');
+    } catch (e) {
+      addTest('DOM Manipulation', false, e.message);
+    }
+    
+    // Test 3: Console logging
+    try {
+      console.log('[TEST] Console logging works');
+      addTest('Console Logging', true, 'Check browser console (F12)');
+    } catch (e) {
+      addTest('Console Logging', false, e.message);
+    }
+    
+    // Test 4: localStorage
+    try {
+      localStorage.setItem('test-key', 'test-value');
+      const value = localStorage.getItem('test-key');
+      addTest('localStorage', value === 'test-value', `Value: ${value}`);
+    } catch (e) {
+      addTest('localStorage', false, e.message);
+    }
+    
+    // Test 5: Fetch (if available)
+    try {
+      if (typeof fetch === 'function') {
+        addTest('Fetch API', true, 'fetch() is available');
+      } else {
+        addTest('Fetch API', false, 'fetch() not available');
+      }
+    } catch (e) {
+      addTest('Fetch API', false, e.message);
+    }
+    
+    console.log('[TEST] All tests completed');
+  </script>
+</body>
+</html>

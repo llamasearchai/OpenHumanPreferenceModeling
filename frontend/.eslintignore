@@ -1,0 +1,13 @@
+# Generated files
+playwright-report/
+dist/
+coverage/
+node_modules/
+*.min.js
+
+# Build artifacts
+.vite/
+.cache/
+
+# Test artifacts
+*.test.js.snap
